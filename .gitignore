@@ -1,0 +1,30 @@
+# Go
+server/reelix-server
+server/*.exe
+server/.devdata/
+server/.devtranscode/
+
+# Real frontend build copied into the embed dir for local full-stack runs —
+# keep only the placeholder index.html tracked (see webui.go).
+server/internal/webui/dist/assets/
+server/internal/webui/dist/favicon.svg
+server/internal/webui/dist/icons.svg
+
+# Node / web
+web/node_modules/
+web/dist/
+mobile/node_modules/
+mobile/android/
+desktop/node_modules/
+desktop/src-tauri/target/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal

@@ -1,0 +1,25 @@
+# Copy this file to docker-compose.yml next to it, adjust the media paths
+# below to your own folders, then run: docker compose up -d
+#
+# Every subfolder under a mounted media path becomes its own browsable
+# category automatically — no extra configuration needed inside Reelix.
+
+services:
+  reelix:
+    image: novexlabs/reelix:latest
+    container_name: reelix
+    restart: unless-stopped
+    ports:
+      - "8096:8096"
+    environment:
+      - REELIX_MAX_CONCURRENT_TRANSCODES=2
+    volumes:
+      - reelix_config:/config
+      - reelix_transcode:/transcode
+      # Add one line per library root you want Reelix to see, read-only:
+      - /path/to/Filme:/media/filme:ro
+      - /path/to/Serien:/media/serien:ro
+
+volumes:
+  reelix_config:
+  reelix_transcode:

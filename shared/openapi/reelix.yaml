@@ -1,0 +1,524 @@
+openapi: 3.1.0
+info:
+  title: Reelix API
+  version: 0.1.0
+  description: >
+    Reelix Core server API. Drives both the Go server handlers (via
+    oapi-codegen) and the TypeScript client (via openapi-typescript /
+    openapi-fetch) from this single spec.
+
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      summary: Liveness check
+      responses:
+        "200":
+          description: Server is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /api/admin/system/version:
+    get:
+      operationId: getSystemVersion
+      summary: Current/latest version info for the in-app update flow
+      responses:
+        "200":
+          description: Version info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemVersion"
+
+  /api/setup/status:
+    get:
+      operationId: getSetupStatus
+      summary: Whether the first-run admin account still needs to be created
+      responses:
+        "200":
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  needsSetup:
+                    type: boolean
+
+  /api/setup/admin:
+    post:
+      operationId: setupAdmin
+      summary: Create the first admin account (only works while needsSetup is true)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupAdminRequest"
+      responses:
+        "201":
+          description: Admin account created and session started
+
+  /api/auth/login:
+    post:
+      operationId: login
+      summary: Log in and start a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+
+  /api/auth/logout:
+    post:
+      operationId: logout
+      summary: End the current session
+      responses:
+        "204":
+          description: Logged out
+
+  /api/auth/me:
+    get:
+      operationId: getMe
+      summary: Current user, their profiles, and the active profile (if any)
+      responses:
+        "200":
+          description: Current session info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+
+  /api/profiles:
+    get:
+      operationId: listProfiles
+      summary: List profiles for the current account
+      responses:
+        "200":
+          description: Profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Profile"
+    post:
+      operationId: createProfile
+      summary: Add a profile (e.g. a kid profile with a PIN) to the current account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProfileRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+
+  /api/profiles/{profileId}/select:
+    post:
+      operationId: selectProfile
+      summary: Select the active profile for this session ("who's watching")
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pin:
+                  type: string
+      responses:
+        "200":
+          description: Profile selected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+
+  /api/libraries:
+    get:
+      operationId: listLibraries
+      summary: List configured libraries
+      responses:
+        "200":
+          description: Libraries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Library"
+    post:
+      operationId: createLibrary
+      summary: Add a new library (folder or M3U source)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLibraryRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Library"
+
+  /api/libraries/{libraryId}/scan:
+    post:
+      operationId: triggerLibraryScan
+      summary: Trigger a rescan of a library
+      parameters:
+        - $ref: "#/components/parameters/LibraryId"
+      responses:
+        "202":
+          description: Scan started
+
+  /api/libraries/{libraryId}/root:
+    get:
+      operationId: getLibraryRoot
+      summary: Browse a library's top level (root categories + root-level items)
+      parameters:
+        - $ref: "#/components/parameters/LibraryId"
+      responses:
+        "200":
+          description: Root of the library
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryChildren"
+
+  /api/categories/{categoryId}/children:
+    get:
+      operationId: getCategoryChildren
+      summary: Browse a category's subcategories and playable items
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Children of the category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryChildren"
+
+  /api/media-items/{mediaItemId}:
+    get:
+      operationId: getMediaItem
+      summary: Get media item detail
+      parameters:
+        - name: mediaItemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Media item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaItem"
+
+  /api/media-items/{mediaItemId}/stream:
+    get:
+      operationId: streamMediaItem
+      summary: Direct-play (Range-served) or transcoded (HLS) playback
+      parameters:
+        - name: mediaItemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Media stream (raw bytes or HLS playlist depending on negotiation)
+
+  /api/media-items/{mediaItemId}/thumbnail:
+    get:
+      operationId: getThumbnail
+      summary: Generated thumbnail for a photo (404 if none was generated, e.g. undecodable formats like HEIC)
+      parameters:
+        - name: mediaItemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: JPEG thumbnail
+
+  /api/media-items/{mediaItemId}/progress:
+    post:
+      operationId: updateProgress
+      summary: Report playback position for the active profile
+      parameters:
+        - name: mediaItemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProgressRequest"
+      responses:
+        "204":
+          description: Recorded
+
+  /api/channels/{channelId}:
+    get:
+      operationId: getChannel
+      summary: Get M3U channel detail
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaItem"
+
+  /api/channels/{channelId}/stream:
+    get:
+      operationId: streamChannel
+      summary: Redirects to the channel's external stream URL (live, non-seekable)
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "302":
+          description: Redirect to the external stream
+
+components:
+  parameters:
+    LibraryId:
+      name: libraryId
+      in: path
+      required: true
+      schema:
+        type: integer
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+
+    SystemVersion:
+      type: object
+      properties:
+        current:
+          type: string
+        latestAvailable:
+          type: string
+          nullable: true
+        updateMechanism:
+          type: string
+          enum: [none, binary, docker-sidecar]
+        updateCheckEnabled:
+          type: boolean
+
+    Library:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        rootPath:
+          type: string
+        type:
+          type: string
+          enum: [FOLDER, PHOTO, M3U]
+        lastScannedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateLibraryRequest:
+      type: object
+      required: [name, rootPath, type]
+      properties:
+        name:
+          type: string
+        rootPath:
+          type: string
+        type:
+          type: string
+          enum: [FOLDER, PHOTO, M3U]
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        path:
+          type: string
+        parentCategoryId:
+          type: integer
+          nullable: true
+
+    Progress:
+      type: object
+      properties:
+        positionSeconds:
+          type: number
+        watched:
+          type: boolean
+
+    MediaItem:
+      description: >
+        A playable browse-listing entry — a local video/photo
+        (itemType=media_item) or an M3U channel (itemType=channel), sharing
+        one shape so the browse API and client don't need to special-case
+        the source.
+      type: object
+      properties:
+        id:
+          type: integer
+        itemType:
+          type: string
+          enum: [media_item, channel]
+        title:
+          type: string
+        filePath:
+          type: string
+        durationSeconds:
+          type: number
+          nullable: true
+        mediaType:
+          type: string
+        progress:
+          allOf:
+            - $ref: "#/components/schemas/Progress"
+          nullable: true
+
+    UpdateProgressRequest:
+      type: object
+      required: [positionSeconds]
+      properties:
+        positionSeconds:
+          type: number
+        durationSeconds:
+          type: number
+          nullable: true
+        watched:
+          type: boolean
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        role:
+          type: string
+          enum: [admin, user]
+
+    Profile:
+      type: object
+      properties:
+        id:
+          type: integer
+        displayName:
+          type: string
+        avatar:
+          type: string
+          nullable: true
+        isKid:
+          type: boolean
+
+    MeResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        profiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Profile"
+        activeProfileId:
+          type: integer
+          nullable: true
+
+    SetupAdminRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    CreateProfileRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+        isKid:
+          type: boolean
+        pin:
+          type: string
+
+    CategoryChildren:
+      type: object
+      properties:
+        subcategories:
+          type: array
+          items:
+            $ref: "#/components/schemas/Category"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaItem"
