@@ -120,7 +120,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update the current account (currently just email, for password-reset delivery) */
+        /** Update the current account's email and/or username (either optional, at least one required) */
         patch: operations["updateMe"];
         trace?: never;
     };
@@ -152,6 +152,40 @@ export interface paths {
         put?: never;
         /** Reset a password using the emailed code */
         post: operations["resetPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/send-verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email a verification code to the account's current address (requires an email to already be set) */
+        post: operations["sendVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/verify-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the emailed verification code, marking the account's email as verified */
+        post: operations["verifyEmail"];
         delete?: never;
         options?: never;
         head?: never;
@@ -426,6 +460,7 @@ export interface components {
             /** @enum {string} */
             role?: "admin" | "user";
             email?: string | null;
+            emailVerified?: boolean;
         };
         Profile: {
             id?: number;
@@ -622,13 +657,21 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    email: string;
+                    email?: string;
+                    username?: string;
                 };
             };
         };
         responses: {
             /** @description Updated */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Username already taken */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -678,6 +721,48 @@ export interface operations {
         };
         responses: {
             /** @description Password changed, all sessions for the account signed out */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sendVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Code sent (or logged, if SMTP isn't configured) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    verifyEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Email verified */
             200: {
                 headers: {
                     [name: string]: unknown;

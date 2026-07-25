@@ -88,6 +88,8 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 		r.With(authMW.RequireAuth).Patch("/me", s.handleUpdateMe)
 		r.Post("/forgot-password", s.handleForgotPassword)
 		r.Post("/reset-password", s.handleResetPassword)
+		r.With(authMW.RequireAuth).Post("/send-verification", s.handleSendVerification)
+		r.With(authMW.RequireAuth).Post("/verify-email", s.handleVerifyEmail)
 	})
 
 	r.Route("/api/profiles", func(r chi.Router) {

@@ -24,11 +24,20 @@ func main() {
 	}
 
 	// Admin-recovery CLI, run via `docker exec <container> reelix-server
-	// reset-password <username> <newpassword>` — for when there's no
-	// working session/email flow to reset a password any other way.
-	if len(os.Args) > 1 && os.Args[1] == "reset-password" {
-		runResetPassword(cfg)
-		return
+	// <subcommand> ...` — for when there's no working session/email flow
+	// to recover an account any other way.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "list-users":
+			runListUsers(cfg)
+			return
+		case "reset-password":
+			runResetPassword(cfg)
+			return
+		case "rename-user":
+			runRenameUser(cfg)
+			return
+		}
 	}
 
 	if err := os.MkdirAll(cfg.TranscodeDir, 0o755); err != nil {
@@ -52,6 +61,35 @@ func main() {
 	}
 }
 
+func openCLIDB(cfg config.Config) *db.UserStore {
+	dbConn, err := db.Open(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("open database: %v", err)
+	}
+	return db.NewUserStore(dbConn)
+}
+
+func runListUsers(cfg config.Config) {
+	users := openCLIDB(cfg)
+	ctx := context.Background()
+
+	all, err := users.List(ctx)
+	if err != nil {
+		log.Fatalf("list users: %v", err)
+	}
+	if len(all) == 0 {
+		fmt.Println("no users yet")
+		return
+	}
+	for _, u := range all {
+		email := "(no email)"
+		if u.Email != nil && *u.Email != "" {
+			email = *u.Email
+		}
+		fmt.Printf("id=%d username=%q role=%s email=%s\n", u.ID, u.Username, u.Role, email)
+	}
+}
+
 func runResetPassword(cfg config.Config) {
 	if len(os.Args) != 4 {
 		fmt.Println("usage: reelix-server reset-password <username> <new-password>")
@@ -63,13 +101,7 @@ func runResetPassword(cfg config.Config) {
 		os.Exit(1)
 	}
 
-	dbConn, err := db.Open(cfg.DataDir)
-	if err != nil {
-		log.Fatalf("open database: %v", err)
-	}
-	defer dbConn.Close()
-
-	users := db.NewUserStore(dbConn)
+	users := openCLIDB(cfg)
 	ctx := context.Background()
 
 	user, err := users.GetByUsername(ctx, username)
@@ -87,4 +119,31 @@ func runResetPassword(cfg config.Config) {
 	}
 
 	fmt.Printf("password reset for %q\n", username)
+}
+
+func runRenameUser(cfg config.Config) {
+	if len(os.Args) != 4 {
+		fmt.Println("usage: reelix-server rename-user <old-username> <new-username>")
+		os.Exit(1)
+	}
+	oldUsername, newUsername := os.Args[2], os.Args[3]
+
+	users := openCLIDB(cfg)
+	ctx := context.Background()
+
+	user, err := users.GetByUsername(ctx, oldUsername)
+	if err != nil {
+		fmt.Printf("user %q not found\n", oldUsername)
+		os.Exit(1)
+	}
+	if existing, err := users.GetByUsername(ctx, newUsername); err == nil && existing != nil {
+		fmt.Printf("username %q is already taken\n", newUsername)
+		os.Exit(1)
+	}
+
+	if err := users.UpdateUsername(ctx, user.ID, newUsername); err != nil {
+		log.Fatalf("rename user: %v", err)
+	}
+
+	fmt.Printf("renamed %q to %q\n", oldUsername, newUsername)
 }

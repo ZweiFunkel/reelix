@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -21,14 +22,15 @@ const (
 )
 
 type userDTO struct {
-	ID       int64   `json:"id"`
-	Username string  `json:"username"`
-	Role     string  `json:"role"`
-	Email    *string `json:"email"`
+	ID            int64   `json:"id"`
+	Username      string  `json:"username"`
+	Role          string  `json:"role"`
+	Email         *string `json:"email"`
+	EmailVerified bool    `json:"emailVerified"`
 }
 
 func toUserDTO(u db.User) userDTO {
-	return userDTO{ID: u.ID, Username: u.Username, Role: u.Role, Email: u.Email}
+	return userDTO{ID: u.ID, Username: u.Username, Role: u.Role, Email: u.Email, EmailVerified: u.EmailVerified}
 }
 
 type profileDTO struct {
@@ -296,12 +298,14 @@ func (s *Server) handleSelectProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateMeRequest struct {
-	Email *string `json:"email"`
+	Email    *string `json:"email"`
+	Username *string `json:"username"`
 }
 
-// handleUpdateMe currently only lets a user set/change their email —
-// the address a "forgot password" reset code gets sent to. There's no
-// way to have a reset flow before an account has one on file.
+// handleUpdateMe lets a user set/change their email (where a "forgot
+// password" reset code gets sent) and/or rename their account.
+// Usernames are unique — checked here for a friendly error rather than
+// surfacing the DB's UNIQUE-constraint failure directly.
 func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
 
@@ -310,14 +314,36 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if req.Email == nil {
-		writeError(w, http.StatusBadRequest, errors.New("email is required"))
+	if req.Email == nil && req.Username == nil {
+		writeError(w, http.StatusBadRequest, errors.New("email or username is required"))
 		return
 	}
-	if err := s.users.UpdateEmail(r.Context(), user.ID, *req.Email); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+
+	if req.Email != nil {
+		if err := s.users.UpdateEmail(r.Context(), user.ID, *req.Email); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 	}
+
+	if req.Username != nil {
+		newUsername := *req.Username
+		if len(newUsername) < 3 {
+			writeError(w, http.StatusBadRequest, errors.New("username must be 3+ chars"))
+			return
+		}
+		if newUsername != user.Username {
+			if existing, err := s.users.GetByUsername(r.Context(), newUsername); err == nil && existing != nil {
+				writeError(w, http.StatusConflict, errors.New("that username is already taken"))
+				return
+			}
+			if err := s.users.UpdateUsername(r.Context(), user.ID, newUsername); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -337,25 +363,36 @@ func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.users.GetByUsername(r.Context(), req.Username)
 	if err == nil && user != nil && user.Email != nil && *user.Email != "" {
-		code, genErr := generateResetCode()
-		if genErr == nil {
-			if err := s.passwordResets.Create(r.Context(), user.ID, code, time.Now().Add(resetCodeTTL)); err == nil {
-				_ = s.mailer.Send(*user.Email, "Reelix password reset code",
-					fmt.Sprintf("Your password reset code is %s. It expires in 15 minutes. If you didn't request this, ignore this email.", code))
-			}
-		}
+		s.sendCode(r.Context(), user.ID, *user.Email, db.TokenPurposePasswordReset,
+			"Reelix password reset code",
+			"Your password reset code is %s. It expires in 15 minutes. If you didn't request this, ignore this email.")
 	}
 
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-func generateResetCode() (string, error) {
+func generateCode() (string, error) {
 	b := make([]byte, 4)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	n := (uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])) % 1000000
 	return fmt.Sprintf("%06d", n), nil
+}
+
+// sendCode generates a code, stores it, and emails it — errors are
+// swallowed (logged by the mailer's own fallback) since the caller
+// paths (forgot-password, send-verification) must not reveal send
+// failures to an unauthenticated or not-yet-verified caller.
+func (s *Server) sendCode(ctx context.Context, userID int64, email, purpose, subject, bodyFmt string) {
+	code, err := generateCode()
+	if err != nil {
+		return
+	}
+	if err := s.passwordResets.Create(ctx, userID, code, purpose, time.Now().Add(resetCodeTTL)); err != nil {
+		return
+	}
+	_ = s.mailer.Send(email, subject, fmt.Sprintf(bodyFmt, code))
 }
 
 type resetPasswordRequest struct {
@@ -381,7 +418,7 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.passwordResets.FindValid(r.Context(), user.ID, req.Code)
+	token, err := s.passwordResets.FindValid(r.Context(), user.ID, req.Code, db.TokenPurposePasswordReset)
 	if err != nil || token == nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid or expired code"))
 		return
@@ -398,6 +435,53 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.passwordResets.MarkUsed(r.Context(), token.ID)
 	_ = s.sessions.DeleteAllForUser(r.Context(), user.ID)
+
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handleSendVerification emails a verification code to the account's
+// current email — required before email_verified is set, which the
+// frontend gates the whole app behind (see plan-adjacent note: user
+// asked for mandatory email verification on first login, mirroring
+// how many consumer apps onboard).
+func (s *Server) handleSendVerification(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+	if user.Email == nil || *user.Email == "" {
+		writeError(w, http.StatusBadRequest, errors.New("set an email first"))
+		return
+	}
+
+	s.sendCode(r.Context(), user.ID, *user.Email, db.TokenPurposeEmailVerify,
+		"Verify your Reelix email",
+		"Your verification code is %s. It expires in 15 minutes.")
+
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+type verifyEmailRequest struct {
+	Code string `json:"code"`
+}
+
+func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+
+	var req verifyEmailRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	token, err := s.passwordResets.FindValid(r.Context(), user.ID, req.Code, db.TokenPurposeEmailVerify)
+	if err != nil || token == nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid or expired code"))
+		return
+	}
+
+	if err := s.users.MarkEmailVerified(r.Context(), user.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	_ = s.passwordResets.MarkUsed(r.Context(), token.ID)
 
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

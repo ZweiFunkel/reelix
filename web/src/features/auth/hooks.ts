@@ -76,6 +76,28 @@ export function useUpdateEmail() {
   })
 }
 
+export function useUpdateAccount() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { email?: string; username?: string }) => api.PATCH('/api/auth/me', { body }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  })
+}
+
+export function useSendVerification() {
+  return useMutation({
+    mutationFn: () => api.POST('/api/auth/send-verification').then(unwrap),
+  })
+}
+
+export function useVerifyEmail() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (code: string) => api.POST('/api/auth/verify-email', { body: { code } }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  })
+}
+
 export function useForgotPassword() {
   return useMutation({
     mutationFn: (username: string) => api.POST('/api/auth/forgot-password', { body: { username } }).then(unwrap),

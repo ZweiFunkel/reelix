@@ -54,18 +54,27 @@ type Channel struct {
 }
 
 type User struct {
-	ID           int64
-	Username     string
-	PasswordHash string
-	Role         string // admin | user
-	Email        *string
-	CreatedAt    time.Time
+	ID            int64
+	Username      string
+	PasswordHash  string
+	Role          string // admin | user
+	Email         *string
+	EmailVerified bool
+	CreatedAt     time.Time
 }
+
+// TokenPurpose distinguishes what a password_reset_token row is for —
+// the same code/expiry/used-once shape serves both flows.
+const (
+	TokenPurposePasswordReset = "password_reset"
+	TokenPurposeEmailVerify   = "email_verify"
+)
 
 type PasswordResetToken struct {
 	ID        int64
 	UserID    int64
 	Code      string
+	Purpose   string
 	ExpiresAt time.Time
 	Used      bool
 }

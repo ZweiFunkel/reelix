@@ -13,6 +13,7 @@ import { LoginPage } from './features/auth/LoginPage'
 import { ProfilePicker } from './features/auth/ProfilePicker'
 import { ServerConnectPage } from './features/auth/ServerConnectPage'
 import { AccountSettingsModal } from './features/auth/AccountSettingsModal'
+import { EmailVerificationGate } from './features/auth/EmailVerificationGate'
 import { isNativeShell, getServerUrl } from './lib/platform'
 import type { MeResponse } from './lib/types'
 
@@ -241,6 +242,10 @@ function App() {
 
   if (me.isError || !me.data) {
     return <LoginPage />
+  }
+
+  if (me.data.user && !me.data.user.emailVerified) {
+    return <EmailVerificationGate user={me.data.user} />
   }
 
   if (me.data.activeProfileId == null) {

@@ -14,26 +14,27 @@ func NewPasswordResetTokenStore(dbConn *sql.DB) *PasswordResetTokenStore {
 	return &PasswordResetTokenStore{db: dbConn}
 }
 
-func (s *PasswordResetTokenStore) Create(ctx context.Context, userID int64, code string, expiresAt time.Time) error {
+func (s *PasswordResetTokenStore) Create(ctx context.Context, userID int64, code, purpose string, expiresAt time.Time) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO password_reset_token (user_id, code, expires_at) VALUES (?, ?, ?)`,
-		userID, code, expiresAt.UTC().Format(time.RFC3339))
+		`INSERT INTO password_reset_token (user_id, code, purpose, expires_at) VALUES (?, ?, ?, ?)`,
+		userID, code, purpose, expiresAt.UTC().Format(time.RFC3339))
 	return err
 }
 
-// FindValid returns the matching, unused, unexpired token for a user, or
-// nil if the code is wrong/expired/already used — callers should treat
-// all three the same way (generic "invalid or expired code" error).
-func (s *PasswordResetTokenStore) FindValid(ctx context.Context, userID int64, code string) (*PasswordResetToken, error) {
+// FindValid returns the matching, unused, unexpired token for a user and
+// purpose, or nil if the code is wrong/expired/already used/for a
+// different purpose — callers should treat all of those the same way
+// (generic "invalid or expired code" error).
+func (s *PasswordResetTokenStore) FindValid(ctx context.Context, userID int64, code, purpose string) (*PasswordResetToken, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, user_id, code, expires_at, used FROM password_reset_token
-		WHERE user_id = ? AND code = ? AND used = 0
-		ORDER BY id DESC LIMIT 1`, userID, code)
+		SELECT id, user_id, code, purpose, expires_at, used FROM password_reset_token
+		WHERE user_id = ? AND code = ? AND purpose = ? AND used = 0
+		ORDER BY id DESC LIMIT 1`, userID, code, purpose)
 
 	var t PasswordResetToken
 	var expiresAt string
 	var used int
-	if err := row.Scan(&t.ID, &t.UserID, &t.Code, &expiresAt, &used); err != nil {
+	if err := row.Scan(&t.ID, &t.UserID, &t.Code, &t.Purpose, &expiresAt, &used); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}

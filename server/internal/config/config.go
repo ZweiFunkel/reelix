@@ -36,7 +36,10 @@ func Load() Config {
 		SMTPPort:                envIntOr("REELIX_SMTP_PORT", 587),
 		SMTPUsername:            envOr("REELIX_SMTP_USERNAME", ""),
 		SMTPPassword:            envOr("REELIX_SMTP_PASSWORD", ""),
-		SMTPFrom:                envOr("REELIX_SMTP_FROM", "reelix@localhost"),
+		// Self-hosters should override this to an address on their own
+		// SMTP account's domain — most providers reject or spam-flag
+		// mail whose From doesn't match the authenticated sender domain.
+		SMTPFrom: envOr("REELIX_SMTP_FROM", "noreply@reelix.com"),
 	}
 }
 

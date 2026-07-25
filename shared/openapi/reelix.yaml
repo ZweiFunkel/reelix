@@ -100,20 +100,23 @@ paths:
                 $ref: "#/components/schemas/MeResponse"
     patch:
       operationId: updateMe
-      summary: Update the current account (currently just email, for password-reset delivery)
+      summary: Update the current account's email and/or username (either optional, at least one required)
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [email]
               properties:
                 email:
+                  type: string
+                username:
                   type: string
       responses:
         "200":
           description: Updated
+        "409":
+          description: Username already taken
 
   /api/auth/forgot-password:
     post:
@@ -154,6 +157,32 @@ paths:
       responses:
         "200":
           description: Password changed, all sessions for the account signed out
+
+  /api/auth/send-verification:
+    post:
+      operationId: sendVerification
+      summary: Email a verification code to the account's current address (requires an email to already be set)
+      responses:
+        "200":
+          description: Code sent (or logged, if SMTP isn't configured)
+
+  /api/auth/verify-email:
+    post:
+      operationId: verifyEmail
+      summary: Confirm the emailed verification code, marking the account's email as verified
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        "200":
+          description: Email verified
 
   /api/profiles:
     get:
@@ -514,6 +543,8 @@ components:
         email:
           type: string
           nullable: true
+        emailVerified:
+          type: boolean
 
     Profile:
       type: object
