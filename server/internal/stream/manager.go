@@ -61,10 +61,17 @@ func (m *Manager) StartSession(sessionID, sourcePath string) (*Session, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	playlistPath := filepath.Join(outputDir, "playlist.m3u8")
+	// hls_list_size 0 keeps every segment in the playlist and on disk —
+	// this is on-demand VOD transcoding, not a live stream, so segments
+	// must stick around for as long as the viewer might still seek back
+	// to them. (An earlier version used delete_segments, a live-stream
+	// setting: it silently deleted each segment once ffmpeg's default
+	// 5-segment/20s rolling window passed it, which is why playback used
+	// to cut out after ~20s regardless of the file's real length.)
 	cmd := exec.CommandContext(ctx, "ffmpeg",
 		"-y", "-i", sourcePath,
 		"-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac",
-		"-f", "hls", "-hls_time", "4", "-hls_flags", "delete_segments+append_list",
+		"-f", "hls", "-hls_time", "4", "-hls_list_size", "0", "-hls_flags", "append_list",
 		playlistPath,
 	)
 	setProcAttrs(cmd)

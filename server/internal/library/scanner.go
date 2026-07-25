@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -111,13 +112,27 @@ func (s *Scanner) upsertFile(ctx context.Context, lib *db.Library, absPath, relP
 
 	if existing != nil && existing.FileSize == info.Size() && existing.FileMTime.Unix() == info.ModTime().Unix() {
 		// Unchanged since the last scan — just touch the generation stamp.
-		_, err := s.items.Upsert(ctx, db.UpsertMediaItemParams{
+		item, err := s.items.Upsert(ctx, db.UpsertMediaItemParams{
 			LibraryID: lib.ID, CategoryID: categoryID, FilePath: relPath,
 			FileSize: existing.FileSize, FileMTime: existing.FileMTime, MediaType: existing.MediaType,
 			DurationSeconds: existing.DurationSeconds, CodecInfo: existing.CodecInfo, Metadata: existing.Metadata,
 			Generation: generation,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		// Backfills thumbnails for items indexed before video thumbnails
+		// existed, without needing the file to actually change — a plain
+		// Rescan is enough.
+		if existing.MediaType == "video" && s.thumbnailsDir != "" {
+			dest := filepath.Join(s.thumbnailsDir, fmt.Sprintf("%d.jpg", item.ID))
+			if _, err := os.Stat(dest); err != nil {
+				if err := generateVideoThumbnail(absPath, dest, existing.DurationSeconds); err != nil {
+					log.Printf("reelix: no thumbnail for %s: %v", relPath, err)
+				}
+			}
+		}
+		return nil
 	}
 
 	if existing == nil {
@@ -134,12 +149,24 @@ func (s *Scanner) upsertFile(ctx context.Context, lib *db.Library, absPath, relP
 
 func (s *Scanner) upsertVideo(ctx context.Context, lib *db.Library, absPath, relPath string, info fs.FileInfo, categoryID *int64, generation int64) error {
 	duration, codec := probe(absPath)
-	_, err := s.items.Upsert(ctx, db.UpsertMediaItemParams{
+	item, err := s.items.Upsert(ctx, db.UpsertMediaItemParams{
 		LibraryID: lib.ID, CategoryID: categoryID, FilePath: relPath,
 		FileSize: info.Size(), FileMTime: info.ModTime(), MediaType: "video",
 		DurationSeconds: duration, CodecInfo: codec, Metadata: s.lookupMovieMetadata(ctx, relPath), Generation: generation,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	if s.thumbnailsDir != "" {
+		dest := filepath.Join(s.thumbnailsDir, fmt.Sprintf("%d.jpg", item.ID))
+		if _, err := os.Stat(dest); err != nil {
+			if err := generateVideoThumbnail(absPath, dest, duration); err != nil {
+				log.Printf("reelix: no thumbnail for %s: %v", relPath, err)
+			}
+		}
+	}
+	return nil
 }
 
 // lookupMovieMetadata queries TMDb (if configured) for artwork/overview

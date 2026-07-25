@@ -45,6 +45,8 @@ export function MediaTile({
   onPlay: (mediaItemId: number, itemType: 'media_item' | 'channel') => void
   onOpenPhoto: (mediaItemId: number) => void
 }) {
+  const [thumbFailed, setThumbFailed] = useState(false)
+
   if (item.mediaType === 'photo') {
     return <PhotoTile item={item} onOpen={() => onOpenPhoto(item.id!)} />
   }
@@ -54,13 +56,23 @@ export function MediaTile({
       ? Math.min(100, (item.progress.positionSeconds / item.durationSeconds) * 100)
       : null
 
+  // Prefer TMDb poster art; for local videos with no match, fall back to
+  // the frame-grab thumbnail generated at scan time. Live channels have
+  // neither.
+  const imageSrc = item.posterUrl ?? (item.itemType !== 'channel' && !thumbFailed ? `/api/media-items/${item.id}/thumbnail` : null)
+
   return (
     <button
       onClick={() => onPlay(item.id!, item.itemType === 'channel' ? 'channel' : 'media_item')}
       className="group aspect-[2/3] rounded-md bg-neutral-800 hover:ring-2 hover:ring-red-500 transition-all flex flex-col items-center justify-center gap-2 p-3 text-center relative overflow-hidden"
     >
-      {item.posterUrl ? (
-        <img src={item.posterUrl} alt={item.title} className="absolute inset-0 w-full h-full object-cover" />
+      {imageSrc ? (
+        <img
+          src={imageSrc}
+          alt={item.title}
+          onError={() => setThumbFailed(true)}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
       ) : (
         <>
           <svg viewBox="0 0 24 24" className="w-9 h-9 text-neutral-500 group-hover:text-red-400" fill="currentColor">
@@ -74,13 +86,13 @@ export function MediaTile({
       ) : (
         formatDuration(item.durationSeconds) && (
           <span
-            className={`text-xs absolute bottom-2 right-2 ${item.posterUrl ? 'text-white bg-black/60 px-1 rounded' : 'text-neutral-500'}`}
+            className={`text-xs absolute bottom-2 right-2 ${imageSrc ? 'text-white bg-black/60 px-1 rounded' : 'text-neutral-500'}`}
           >
             {formatDuration(item.durationSeconds)}
           </span>
         )
       )}
-      {item.posterUrl && (
+      {imageSrc && (
         <span className="absolute bottom-2 left-2 right-10 text-xs text-white bg-black/60 px-1 rounded truncate opacity-0 group-hover:opacity-100 transition-opacity">
           {item.title}
         </span>
