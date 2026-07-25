@@ -5,12 +5,43 @@ package stream
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
 )
+
+// tailWriter keeps only the last maxLen bytes written to it — enough to
+// see ffmpeg's actual error when it dies partway through a transcode
+// (previously silently swallowed), without holding a whole session's
+// worth of ffmpeg log output in memory.
+type tailWriter struct {
+	mu     sync.Mutex
+	buf    []byte
+	maxLen int
+}
+
+func newTailWriter(maxLen int) *tailWriter {
+	return &tailWriter{maxLen: maxLen}
+}
+
+func (w *tailWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.buf = append(w.buf, p...)
+	if len(w.buf) > w.maxLen {
+		w.buf = w.buf[len(w.buf)-w.maxLen:]
+	}
+	return len(p), nil
+}
+
+func (w *tailWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return string(w.buf)
+}
 
 type Session struct {
 	ID           string
@@ -75,6 +106,8 @@ func (m *Manager) StartSession(sessionID, sourcePath string) (*Session, error) {
 		playlistPath,
 	)
 	setProcAttrs(cmd)
+	stderr := newTailWriter(8 << 10) // last 8KB — plenty for ffmpeg's actual error
+	cmd.Stderr = stderr
 
 	if err := cmd.Start(); err != nil {
 		cancel()
@@ -89,7 +122,13 @@ func (m *Manager) StartSession(sessionID, sourcePath string) (*Session, error) {
 	m.mu.Unlock()
 
 	go func() {
-		_ = cmd.Wait()
+		// A session the reaper already cleaned up (ctx canceled, e.g. the
+		// viewer closed the player) exits with a context-canceled error
+		// that's expected, not a real failure — only the unexpected case
+		// is worth logging loudly.
+		if err := cmd.Wait(); err != nil && ctx.Err() == nil {
+			log.Printf("reelix: ffmpeg transcode %q exited unexpectedly: %v\n--- ffmpeg stderr (tail) ---\n%s", sessionID, err, stderr.String())
+		}
 	}()
 
 	return sess, nil

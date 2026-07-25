@@ -80,6 +80,12 @@ export function Player({
 
     if (Hls.isSupported()) {
       const hls = new Hls()
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        // Surfaced so a dying ffmpeg process or a stalled fetch shows up
+        // as something diagnosable instead of playback just quietly
+        // stopping with no trace anywhere.
+        console.error('reelix: HLS error', data.type, data.details, data.fatal ? '(fatal)' : '', data)
+      })
       hls.loadSource(streamUrl)
       hls.attachMedia(video)
       if (isChannel) return () => hls.destroy()
@@ -207,7 +213,7 @@ export function Player({
         <video
           ref={videoRef}
           autoPlay
-          className="max-h-full max-w-full"
+          className="w-full h-full object-contain"
           onClick={togglePlay}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}

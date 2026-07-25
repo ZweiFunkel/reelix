@@ -112,18 +112,22 @@ func (s *Scanner) upsertFile(ctx context.Context, lib *db.Library, absPath, relP
 
 	if existing != nil && existing.FileSize == info.Size() && existing.FileMTime.Unix() == info.ModTime().Unix() {
 		// Unchanged since the last scan — just touch the generation stamp.
+		// Backfills metadata (show/season/episode grouping, TMDb artwork)
+		// for items indexed before this existed, or before a TMDb key was
+		// configured — a plain Rescan is enough, no need to touch the file.
+		meta := existing.Metadata
+		if existing.MediaType == "video" && (meta == "" || meta == "{}") {
+			meta = s.lookupVideoMetadata(ctx, relPath, categoryID)
+		}
 		item, err := s.items.Upsert(ctx, db.UpsertMediaItemParams{
 			LibraryID: lib.ID, CategoryID: categoryID, FilePath: relPath,
 			FileSize: existing.FileSize, FileMTime: existing.FileMTime, MediaType: existing.MediaType,
-			DurationSeconds: existing.DurationSeconds, CodecInfo: existing.CodecInfo, Metadata: existing.Metadata,
+			DurationSeconds: existing.DurationSeconds, CodecInfo: existing.CodecInfo, Metadata: meta,
 			Generation: generation,
 		})
 		if err != nil {
 			return err
 		}
-		// Backfills thumbnails for items indexed before video thumbnails
-		// existed, without needing the file to actually change — a plain
-		// Rescan is enough.
 		if existing.MediaType == "video" && s.thumbnailsDir != "" {
 			dest := filepath.Join(s.thumbnailsDir, fmt.Sprintf("%d.jpg", item.ID))
 			if _, err := os.Stat(dest); err != nil {
