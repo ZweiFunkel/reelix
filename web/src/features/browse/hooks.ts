@@ -25,6 +25,21 @@ export function useMediaItem(mediaItemId: number | null) {
   })
 }
 
+export function useLibraryRecent(libraryId: number | null) {
+  return useQuery({
+    queryKey: ['library-recent', libraryId],
+    enabled: libraryId != null,
+    queryFn: () => api.GET('/api/libraries/{libraryId}/recent', { params: { path: { libraryId: libraryId! } } }).then(unwrap),
+  })
+}
+
+export function useContinueWatching() {
+  return useQuery({
+    queryKey: ['continue-watching'],
+    queryFn: () => api.GET('/api/continue-watching').then(unwrap),
+  })
+}
+
 export function useChannel(channelId: number | null) {
   return useQuery({
     queryKey: ['channel', channelId],

@@ -89,10 +89,12 @@ type Profile struct {
 }
 
 type Session struct {
-	ID        string
-	UserID    int64
-	ProfileID *int64
-	ExpiresAt time.Time
+	ID         string
+	UserID     int64
+	ProfileID  *int64
+	ExpiresAt  time.Time
+	CreatedAt  time.Time
+	LastSeenAt *time.Time
 }
 
 type WatchState struct {

@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Active login sessions — who's logged in, when last seen, and what they're playing right now */
+        get: operations["getAdminSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setup/status": {
         parameters: {
             query?: never;
@@ -279,6 +296,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/libraries/{libraryId}/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A library's most-recently-added items, flattened across all its categories */
+        get: operations["getLibraryRecent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/continue-watching": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Items the active profile started but hasn't finished, most-recent first */
+        get: operations["getContinueWatching"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/categories/{categoryId}/children": {
         parameters: {
             query?: never;
@@ -448,6 +499,12 @@ export interface components {
             durationSeconds?: number | null;
             mediaType?: string;
             progress?: components["schemas"]["Progress"] | null;
+            /** @description TMDb poster artwork, when a match was found (requires an admin-configured TMDb API key) */
+            posterUrl?: string | null;
+            /** @description TMDb backdrop artwork, when a match was found */
+            backdropUrl?: string | null;
+            /** @description TMDb synopsis, when a match was found */
+            overview?: string | null;
         };
         UpdateProgressRequest: {
             positionSeconds: number;
@@ -485,6 +542,24 @@ export interface components {
             displayName: string;
             isKid?: boolean;
             pin?: string;
+        };
+        NowPlaying: {
+            title?: string;
+            /** @enum {string} */
+            itemType?: "media_item" | "channel";
+            isLive?: boolean;
+            positionSeconds?: number;
+        };
+        AdminSession: {
+            sessionId?: string;
+            username?: string;
+            profileName?: string | null;
+            isKid?: boolean;
+            /** Format: date-time */
+            loginAt?: string;
+            /** Format: date-time */
+            lastSeenAt?: string | null;
+            nowPlaying?: components["schemas"]["NowPlaying"] | null;
         };
         CategoryChildren: {
             subcategories?: components["schemas"]["Category"][];
@@ -537,6 +612,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemVersion"];
+                };
+            };
+        };
+    };
+    getAdminSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active sessions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSession"][];
                 };
             };
         };
@@ -925,6 +1020,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CategoryChildren"];
+                };
+            };
+        };
+    };
+    getLibraryRecent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                libraryId: components["parameters"]["LibraryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recently added items */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaItem"][];
+                };
+            };
+        };
+    };
+    getContinueWatching: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description In-progress items */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaItem"][];
                 };
             };
         };

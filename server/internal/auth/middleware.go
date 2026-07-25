@@ -41,6 +41,7 @@ func (m *Middleware) sessionFromRequest(r *http.Request) (*db.Session, *db.User)
 	if err != nil || user == nil {
 		return nil, nil
 	}
+	_ = m.sessions.Touch(r.Context(), sess.ID)
 	return sess, user
 }
 

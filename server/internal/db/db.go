@@ -21,7 +21,10 @@ var migrationsFS embed.FS
 // don't block concurrent browse reads.
 func Open(dataDir string) (*sql.DB, error) {
 	dsn := filepath.Join(dataDir, "reelix.db")
-	conn, err := sql.Open("sqlite", dsn+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)")
+	// busy_timeout makes concurrent writers (e.g. a session touch racing a
+	// library scan) block-and-retry for up to 5s instead of immediately
+	// failing with SQLITE_BUSY — WAL allows one writer at a time, not zero.
+	conn, err := sql.Open("sqlite", dsn+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}

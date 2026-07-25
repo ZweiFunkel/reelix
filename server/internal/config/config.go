@@ -24,6 +24,11 @@ type Config struct {
 	SMTPUsername string
 	SMTPPassword string
 	SMTPFrom     string
+
+	// TMDbAPIKey enables poster/backdrop/overview lookups for video
+	// libraries. Empty disables the feature entirely — never a hard
+	// dependency for browsing or playback.
+	TMDbAPIKey string
 }
 
 func Load() Config {
@@ -39,7 +44,8 @@ func Load() Config {
 		// Self-hosters should override this to an address on their own
 		// SMTP account's domain — most providers reject or spam-flag
 		// mail whose From doesn't match the authenticated sender domain.
-		SMTPFrom: envOr("REELIX_SMTP_FROM", "noreply@reelix.com"),
+		SMTPFrom:   envOr("REELIX_SMTP_FROM", "noreply@reelix.com"),
+		TMDbAPIKey: envOr("REELIX_TMDB_API_KEY", ""),
 	}
 }
 

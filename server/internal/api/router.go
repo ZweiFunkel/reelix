@@ -14,6 +14,7 @@ import (
 	"github.com/novex-labs/reelix/server/internal/db"
 	"github.com/novex-labs/reelix/server/internal/library"
 	"github.com/novex-labs/reelix/server/internal/mail"
+	"github.com/novex-labs/reelix/server/internal/metadata"
 	"github.com/novex-labs/reelix/server/internal/stream"
 	"github.com/novex-labs/reelix/server/internal/webui"
 )
@@ -59,7 +60,7 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 		watchStates:    watchStates,
 		passwordResets: passwordResets,
 		mailer:         mail.NewSender(cfg),
-		scanner:        library.NewScanner(libraries, categories, items, channels, thumbnailsDir),
+		scanner:        library.NewScanner(libraries, categories, items, channels, thumbnailsDir, metadata.NewClient(cfg.TMDbAPIKey)),
 		transcoder:     stream.NewManager(transcodeDir, maxConcurrentTranscodes),
 		thumbnailsDir:  thumbnailsDir,
 	}
@@ -73,8 +74,11 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 	r.Get("/api/health", s.handleHealth)
 
 	r.Route("/api/admin/system", func(r chi.Router) {
+		r.Use(authMW.RequireAdmin)
 		r.Get("/version", s.handleSystemVersion)
 	})
+
+	r.With(authMW.RequireAdmin).Get("/api/admin/sessions", s.handleAdminSessions)
 
 	r.Route("/api/setup", func(r chi.Router) {
 		r.Get("/status", s.handleSetupStatus)
@@ -105,6 +109,8 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 		r.With(authMW.RequireAdmin).Post("/{libraryId}/scan", s.handleTriggerScan)
 	})
 	r.With(authMW.RequireProfile).Get("/api/libraries/{libraryId}/root", s.handleLibraryRoot)
+	r.With(authMW.RequireProfile).Get("/api/libraries/{libraryId}/recent", s.handleLibraryRecent)
+	r.With(authMW.RequireProfile).Get("/api/continue-watching", s.handleContinueWatching)
 
 	r.Route("/api/categories", func(r chi.Router) {
 		r.Use(authMW.RequireProfile)

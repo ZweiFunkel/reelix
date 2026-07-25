@@ -36,6 +36,64 @@ function PhotoTile({ item, onOpen }: { item: MediaItem; onOpen: () => void }) {
   )
 }
 
+export function MediaTile({
+  item,
+  onPlay,
+  onOpenPhoto,
+}: {
+  item: MediaItem
+  onPlay: (mediaItemId: number, itemType: 'media_item' | 'channel') => void
+  onOpenPhoto: (mediaItemId: number) => void
+}) {
+  if (item.mediaType === 'photo') {
+    return <PhotoTile item={item} onOpen={() => onOpenPhoto(item.id!)} />
+  }
+
+  const progressPct =
+    item.progress?.positionSeconds != null && item.durationSeconds
+      ? Math.min(100, (item.progress.positionSeconds / item.durationSeconds) * 100)
+      : null
+
+  return (
+    <button
+      onClick={() => onPlay(item.id!, item.itemType === 'channel' ? 'channel' : 'media_item')}
+      className="group aspect-[2/3] rounded-md bg-neutral-800 hover:ring-2 hover:ring-red-500 transition-all flex flex-col items-center justify-center gap-2 p-3 text-center relative overflow-hidden"
+    >
+      {item.posterUrl ? (
+        <img src={item.posterUrl} alt={item.title} className="absolute inset-0 w-full h-full object-cover" />
+      ) : (
+        <>
+          <svg viewBox="0 0 24 24" className="w-9 h-9 text-neutral-500 group-hover:text-red-400" fill="currentColor">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+          <span className="text-sm text-neutral-200 line-clamp-2">{item.title}</span>
+        </>
+      )}
+      {item.itemType === 'channel' ? (
+        <span className="text-[10px] font-semibold tracking-wide text-red-400 absolute bottom-2 right-2">LIVE</span>
+      ) : (
+        formatDuration(item.durationSeconds) && (
+          <span
+            className={`text-xs absolute bottom-2 right-2 ${item.posterUrl ? 'text-white bg-black/60 px-1 rounded' : 'text-neutral-500'}`}
+          >
+            {formatDuration(item.durationSeconds)}
+          </span>
+        )
+      )}
+      {item.posterUrl && (
+        <span className="absolute bottom-2 left-2 right-10 text-xs text-white bg-black/60 px-1 rounded truncate opacity-0 group-hover:opacity-100 transition-opacity">
+          {item.title}
+        </span>
+      )}
+      {progressPct != null && (
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-neutral-700">
+          <div className="h-full bg-red-500" style={{ width: `${progressPct}%` }} />
+        </div>
+      )}
+    </button>
+  )
+}
+
 export function BrowseGrid({
   data,
   onOpenCategory,
@@ -84,31 +142,9 @@ export function BrowseGrid({
         <section>
           <h2 className="text-sm font-medium text-neutral-400 mb-3 px-1">Titles</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {data.items!.map((item) =>
-              item.mediaType === 'photo' ? (
-                <PhotoTile key={item.id} item={item} onOpen={() => onOpenPhoto(item.id!)} />
-              ) : (
-                <button
-                  key={item.id}
-                  onClick={() => onPlay(item.id!, item.itemType === 'channel' ? 'channel' : 'media_item')}
-                  className="group aspect-[2/3] rounded-md bg-neutral-800 hover:bg-red-900/40 transition-colors flex flex-col items-center justify-center gap-2 p-3 text-center relative overflow-hidden"
-                >
-                  <svg viewBox="0 0 24 24" className="w-9 h-9 text-neutral-500 group-hover:text-red-400" fill="currentColor">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                  <span className="text-sm text-neutral-200 line-clamp-2">{item.title}</span>
-                  {item.itemType === 'channel' ? (
-                    <span className="text-[10px] font-semibold tracking-wide text-red-400 absolute bottom-2 right-2">LIVE</span>
-                  ) : (
-                    formatDuration(item.durationSeconds) && (
-                      <span className="text-xs text-neutral-500 absolute bottom-2 right-2">
-                        {formatDuration(item.durationSeconds)}
-                      </span>
-                    )
-                  )}
-                </button>
-              ),
-            )}
+            {data.items!.map((item) => (
+              <MediaTile key={item.id} item={item} onPlay={onPlay} onOpenPhoto={onOpenPhoto} />
+            ))}
           </div>
         </section>
       )}

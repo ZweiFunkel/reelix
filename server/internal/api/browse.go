@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"path"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/novex-labs/reelix/server/internal/auth"
 	"github.com/novex-labs/reelix/server/internal/db"
+	"github.com/novex-labs/reelix/server/internal/metadata"
 )
 
 type categoryDTO struct {
@@ -42,12 +44,32 @@ type mediaItemDTO struct {
 	DurationSeconds *float64     `json:"durationSeconds"`
 	MediaType       string       `json:"mediaType"`
 	Progress        *progressDTO `json:"progress"`
+	PosterURL       *string      `json:"posterUrl"`
+	BackdropURL     *string      `json:"backdropUrl"`
+	Overview        *string      `json:"overview"`
 }
 
 func toMediaItemDTO(m db.MediaItem) mediaItemDTO {
 	base := path.Base(m.FilePath)
 	title := strings.TrimSuffix(base, path.Ext(base))
-	return mediaItemDTO{ID: m.ID, ItemType: "media_item", Title: title, FilePath: m.FilePath, DurationSeconds: m.DurationSeconds, MediaType: m.MediaType}
+	dto := mediaItemDTO{ID: m.ID, ItemType: "media_item", Title: title, FilePath: m.FilePath, DurationSeconds: m.DurationSeconds, MediaType: m.MediaType}
+
+	var movie metadata.Movie
+	if json.Unmarshal([]byte(m.Metadata), &movie) == nil && movie.TMDbID != 0 {
+		if movie.Title != "" {
+			dto.Title = movie.Title
+		}
+		if url := movie.PosterURL(); url != "" {
+			dto.PosterURL = &url
+		}
+		if url := movie.BackdropURL(); url != "" {
+			dto.BackdropURL = &url
+		}
+		if movie.Overview != "" {
+			dto.Overview = &movie.Overview
+		}
+	}
+	return dto
 }
 
 func toChannelDTO(c db.Channel) mediaItemDTO {
@@ -161,6 +183,52 @@ func toChildrenResponse(subcats []db.Category, items []db.MediaItem, channels []
 		resp.Items = append(resp.Items, toChannelDTO(c))
 	}
 	return resp
+}
+
+// handleLibraryRecent lists a library's most-recently-added items,
+// flattened across all its categories — the per-library "Latest" row.
+func (s *Server) handleLibraryRecent(w http.ResponseWriter, r *http.Request) {
+	libraryID, err := strconv.ParseInt(chi.URLParam(r, "libraryId"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	items, err := s.items.ListRecentByLibrary(r.Context(), libraryID, 20)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	dtos := make([]mediaItemDTO, len(items))
+	for i, m := range items {
+		dtos[i] = toMediaItemDTO(m)
+	}
+	dtos = s.attachProgress(r.Context(), dtos)
+	writeJSON(w, http.StatusOK, dtos)
+}
+
+// handleContinueWatching lists items the active profile started but
+// hasn't finished — the "Weiterschauen" row on the Netflix-style home.
+func (s *Server) handleContinueWatching(w http.ResponseWriter, r *http.Request) {
+	sess := auth.SessionFromContext(r.Context())
+	if sess == nil || sess.ProfileID == nil {
+		writeError(w, http.StatusForbidden, errors.New("no active profile"))
+		return
+	}
+
+	items, err := s.items.ListInProgress(r.Context(), *sess.ProfileID, 20)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	dtos := make([]mediaItemDTO, len(items))
+	for i, m := range items {
+		dtos[i] = toMediaItemDTO(m)
+	}
+	dtos = s.attachProgress(r.Context(), dtos)
+	writeJSON(w, http.StatusOK, dtos)
 }
 
 func (s *Server) handleGetMediaItem(w http.ResponseWriter, r *http.Request) {

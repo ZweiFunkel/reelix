@@ -89,7 +89,7 @@ function AddProfileForm({ onClose }: { onClose: () => void }) {
   )
 }
 
-export function ProfilePicker({ profiles }: { profiles: Profile[] }) {
+export function ProfilePicker({ profiles, onSelected }: { profiles: Profile[]; onSelected?: () => void }) {
   const selectProfile = useSelectProfile()
   const [pinTarget, setPinTarget] = useState<Profile | null>(null)
   const [pinError, setPinError] = useState<string | null>(null)
@@ -100,6 +100,7 @@ export function ProfilePicker({ profiles }: { profiles: Profile[] }) {
       await selectProfile.mutateAsync({ profileId: profile.id!, pin })
       setPinTarget(null)
       setPinError(null)
+      onSelected?.()
     } catch (e) {
       if (profile.isKid) setPinError((e as Error).message)
     }

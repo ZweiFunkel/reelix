@@ -2,14 +2,17 @@ package library
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/novex-labs/reelix/server/internal/db"
 	"github.com/novex-labs/reelix/server/internal/m3u"
+	"github.com/novex-labs/reelix/server/internal/metadata"
 )
 
 type Scanner struct {
@@ -18,10 +21,11 @@ type Scanner struct {
 	items         *db.MediaItemStore
 	channels      *db.ChannelStore
 	thumbnailsDir string
+	tmdb          *metadata.Client
 }
 
-func NewScanner(libraries *db.LibraryStore, categories *db.CategoryStore, items *db.MediaItemStore, channels *db.ChannelStore, thumbnailsDir string) *Scanner {
-	return &Scanner{libraries: libraries, categories: categories, items: items, channels: channels, thumbnailsDir: thumbnailsDir}
+func NewScanner(libraries *db.LibraryStore, categories *db.CategoryStore, items *db.MediaItemStore, channels *db.ChannelStore, thumbnailsDir string, tmdb *metadata.Client) *Scanner {
+	return &Scanner{libraries: libraries, categories: categories, items: items, channels: channels, thumbnailsDir: thumbnailsDir, tmdb: tmdb}
 }
 
 // Scan walks a FOLDER library's root path depth-first, mirroring the
@@ -133,9 +137,37 @@ func (s *Scanner) upsertVideo(ctx context.Context, lib *db.Library, absPath, rel
 	_, err := s.items.Upsert(ctx, db.UpsertMediaItemParams{
 		LibraryID: lib.ID, CategoryID: categoryID, FilePath: relPath,
 		FileSize: info.Size(), FileMTime: info.ModTime(), MediaType: "video",
-		DurationSeconds: duration, CodecInfo: codec, Generation: generation,
+		DurationSeconds: duration, CodecInfo: codec, Metadata: s.lookupMovieMetadata(ctx, relPath), Generation: generation,
 	})
 	return err
+}
+
+// lookupMovieMetadata queries TMDb (if configured) for artwork/overview
+// matching a video's filename. Best-effort: any failure or missing match
+// just leaves the item without artwork, same as if TMDb weren't configured.
+func (s *Scanner) lookupMovieMetadata(ctx context.Context, relPath string) string {
+	if s.tmdb == nil {
+		return "{}"
+	}
+	base := filepath.Base(relPath)
+	title, year := metadata.TitleAndYear(strings.TrimSuffix(base, filepath.Ext(base)))
+	if title == "" {
+		return "{}"
+	}
+
+	movie, err := s.tmdb.SearchMovie(ctx, title, year)
+	if err != nil {
+		log.Printf("reelix: tmdb lookup for %q: %v", title, err)
+		return "{}"
+	}
+	if movie == nil {
+		return "{}"
+	}
+	raw, err := json.Marshal(movie)
+	if err != nil {
+		return "{}"
+	}
+	return string(raw)
 }
 
 func (s *Scanner) upsertPhoto(ctx context.Context, lib *db.Library, absPath, relPath string, info fs.FileInfo, categoryID *int64, generation int64) error {

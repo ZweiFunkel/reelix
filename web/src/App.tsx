@@ -6,8 +6,10 @@ import { AddLibraryDialog } from './features/library/AddLibraryDialog'
 import { useLibraryRoot, useCategoryChildren } from './features/browse/hooks'
 import { BrowseGrid } from './features/browse/BrowseGrid'
 import { PhotoLightbox } from './features/browse/PhotoLightbox'
+import { HomePage } from './features/home/HomePage'
+import { AdminPage } from './features/admin/AdminPage'
 import { Player } from './features/player/Player'
-import { useSetupStatus, useMe, useLogout } from './features/auth/hooks'
+import { useSetupStatus, useMe } from './features/auth/hooks'
 import { SetupPage } from './features/auth/SetupPage'
 import { LoginPage } from './features/auth/LoginPage'
 import { ProfilePicker } from './features/auth/ProfilePicker'
@@ -15,9 +17,9 @@ import { ServerConnectPage } from './features/auth/ServerConnectPage'
 import { AccountSettingsModal } from './features/auth/AccountSettingsModal'
 import { EmailVerificationGate } from './features/auth/EmailVerificationGate'
 import { isNativeShell, getServerUrl } from './lib/platform'
+import { Sidebar, type Page, type PathEntry } from './components/Sidebar'
+import { UserMenu } from './components/UserMenu'
 import type { MeResponse } from './lib/types'
-
-type PathEntry = { libraryId: number; categoryId: number | null; label: string }
 
 function useHealth() {
   return useQuery({
@@ -41,56 +43,34 @@ function StatusPill() {
   )
 }
 
-function LibraryList({ isAdmin, onOpen, onAdd }: { isAdmin: boolean; onOpen: (entry: PathEntry) => void; onAdd: () => void }) {
-  const { data: libraries, isLoading } = useLibraries()
+function LibraryHeader({ isAdmin, libraryId, onAdd }: { isAdmin: boolean; libraryId: number; onAdd: () => void }) {
+  const { data: libraries } = useLibraries()
   const triggerScan = useTriggerScan()
+  const lib = libraries?.find((l) => l.id === libraryId)
+  if (!lib) return null
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Libraries</h1>
-        {isAdmin && (
-          <button onClick={onAdd} className="px-4 py-2 rounded bg-red-600 hover:bg-red-500 font-medium text-sm">
+    <div className="flex items-center justify-between">
+      <div>
+        <h1 className="text-2xl font-semibold">{lib.name}</h1>
+        <span className="text-xs text-neutral-500">
+          {lib.lastScannedAt ? `Scanned ${new Date(lib.lastScannedAt).toLocaleString()}` : 'Never scanned'}
+        </span>
+      </div>
+      {isAdmin && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => triggerScan.mutate(lib.id!)}
+            disabled={triggerScan.isPending}
+            className="text-xs px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+          >
+            {triggerScan.isPending ? 'Scanning…' : 'Rescan'}
+          </button>
+          <button onClick={onAdd} className="px-3 py-2 rounded bg-red-600 hover:bg-red-500 font-medium text-xs">
             + Add library
           </button>
-        )}
-      </div>
-
-      {isLoading && <p className="text-neutral-500 text-sm">Loading…</p>}
-      {!isLoading && (!libraries || libraries.length === 0) && (
-        <p className="text-neutral-500 text-sm">{isAdmin ? 'No libraries yet — add one to get started.' : 'No libraries yet.'}</p>
+        </div>
       )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-        {libraries?.map((lib) => (
-          <div
-            key={lib.id}
-            className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4 flex flex-col gap-2"
-          >
-            <button
-              onClick={() => onOpen({ libraryId: lib.id!, categoryId: null, label: lib.name! })}
-              className="text-left font-medium hover:text-red-400"
-            >
-              {lib.name}
-            </button>
-            <span className="text-xs text-neutral-500 font-mono truncate">{lib.rootPath}</span>
-            <div className="flex items-center justify-between mt-1">
-              <span className="text-xs text-neutral-500">
-                {lib.lastScannedAt ? `Scanned ${new Date(lib.lastScannedAt).toLocaleString()}` : 'Never scanned'}
-              </span>
-              {isAdmin && (
-                <button
-                  onClick={() => triggerScan.mutate(lib.id!)}
-                  disabled={triggerScan.isPending}
-                  className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-                >
-                  {triggerScan.isPending ? 'Scanning…' : 'Rescan'}
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }
@@ -99,7 +79,7 @@ function Breadcrumbs({ path, onNavigate, onHome }: { path: PathEntry[]; onNaviga
   return (
     <div className="flex items-center gap-2 text-sm text-neutral-400 flex-wrap">
       <button onClick={onHome} className="hover:text-white">
-        Libraries
+        Home
       </button>
       {path.map((entry, i) => (
         <span key={i} className="flex items-center gap-2">
@@ -144,62 +124,73 @@ function BrowseView({
   )
 }
 
-function MediaApp({ me }: { me: MeResponse }) {
-  const [path, setPath] = useState<PathEntry[]>([])
+function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: () => void }) {
+  const [page, setPage] = useState<Page>({ kind: 'home' })
   const [showAddLibrary, setShowAddLibrary] = useState(false)
   const [playing, setPlaying] = useState<{ id: number; itemType: 'media_item' | 'channel' } | null>(null)
   const [photoId, setPhotoId] = useState<number | null>(null)
   const [showAccountSettings, setShowAccountSettings] = useState(false)
-  const logout = useLogout()
+  const { data: libraries } = useLibraries()
   const activeProfile = me.profiles?.find((p) => p.id === me.activeProfileId)
   // A kid profile never gets admin controls, even under an admin account —
   // the server enforces this too (RequireAdmin), this just keeps the UI honest.
   const isAdmin = me.user?.role === 'admin' && !activeProfile?.isKid
 
-  const current = path[path.length - 1]
+  const current = page.kind === 'browse' ? page.path[page.path.length - 1] : undefined
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-neutral-900">
-        <span className="text-xl font-semibold">
-          Reel<span className="text-red-500">ix</span>
-        </span>
-        <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex">
+      <Sidebar libraries={libraries} page={page} isAdmin={isAdmin} onNavigate={setPage} />
+
+      <div className="flex-1 flex flex-col">
+        <header className="flex items-center justify-end gap-4 px-6 py-4 border-b border-neutral-900">
           <StatusPill />
-          <span className="text-sm text-neutral-400">{activeProfile?.displayName}</span>
-          <button onClick={() => setShowAccountSettings(true)} className="text-sm text-neutral-400 hover:text-white">
-            Account
-          </button>
-          <button onClick={() => logout.mutate()} className="text-sm text-neutral-400 hover:text-white">
-            Sign out
-          </button>
-        </div>
-      </header>
+          {me.user && (
+            <UserMenu
+              user={me.user}
+              activeProfile={activeProfile}
+              onOpenAccountSettings={() => setShowAccountSettings(true)}
+              onSwitchProfile={onSwitchProfile}
+            />
+          )}
+        </header>
 
-      <main className="px-6 py-6 max-w-6xl mx-auto flex flex-col gap-6">
-        {current && (
-          <Breadcrumbs
-            path={path}
-            onHome={() => setPath([])}
-            onNavigate={(i) => setPath(path.slice(0, i + 1))}
-          />
-        )}
+        <main className="px-6 py-6 max-w-6xl w-full mx-auto flex flex-col gap-6">
+          {page.kind === 'browse' && current && (
+            <>
+              <Breadcrumbs
+                path={page.path}
+                onHome={() => setPage({ kind: 'home' })}
+                onNavigate={(i) => setPage({ kind: 'browse', path: page.path.slice(0, i + 1) })}
+              />
+              {current.categoryId === null && (
+                <LibraryHeader isAdmin={isAdmin} libraryId={current.libraryId} onAdd={() => setShowAddLibrary(true)} />
+              )}
+              <BrowseView
+                entry={current}
+                onOpenCategory={(categoryId, label) =>
+                  setPage({ kind: 'browse', path: [...page.path, { libraryId: current.libraryId, categoryId, label }] })
+                }
+                onPlay={(id, itemType) => setPlaying({ id, itemType })}
+                onOpenPhoto={(id) => setPhotoId(id)}
+              />
+            </>
+          )}
 
-        {!current && (
-          <LibraryList isAdmin={isAdmin} onOpen={(entry) => setPath([entry])} onAdd={() => setShowAddLibrary(true)} />
-        )}
+          {page.kind === 'home' && (
+            <HomePage
+              libraries={libraries}
+              isAdmin={isAdmin}
+              onPlay={(id, itemType) => setPlaying({ id, itemType })}
+              onOpenPhoto={(id) => setPhotoId(id)}
+              onNavigate={setPage}
+              onAddLibrary={() => setShowAddLibrary(true)}
+            />
+          )}
 
-        {current && (
-          <BrowseView
-            entry={current}
-            onOpenCategory={(categoryId, label) =>
-              setPath([...path, { libraryId: current.libraryId, categoryId, label }])
-            }
-            onPlay={(id, itemType) => setPlaying({ id, itemType })}
-            onOpenPhoto={(id) => setPhotoId(id)}
-          />
-        )}
-      </main>
+          {page.kind === 'admin' && isAdmin && <AdminPage />}
+        </main>
+      </div>
 
       {showAccountSettings && me.user && (
         <AccountSettingsModal user={me.user} onClose={() => setShowAccountSettings(false)} />
@@ -210,7 +201,7 @@ function MediaApp({ me }: { me: MeResponse }) {
           onClose={() => setShowAddLibrary(false)}
           onCreated={(libraryId, name) => {
             setShowAddLibrary(false)
-            setPath([{ libraryId, categoryId: null, label: name }])
+            setPage({ kind: 'browse', path: [{ libraryId, categoryId: null, label: name }] })
           }}
         />
       )}
@@ -225,6 +216,7 @@ function MediaApp({ me }: { me: MeResponse }) {
 
 function App() {
   const [connected, setConnected] = useState(!isNativeShell() || !!getServerUrl())
+  const [switchingProfile, setSwitchingProfile] = useState(false)
   const setupStatus = useSetupStatus()
   const me = useMe()
 
@@ -248,11 +240,11 @@ function App() {
     return <EmailVerificationGate user={me.data.user} />
   }
 
-  if (me.data.activeProfileId == null) {
-    return <ProfilePicker profiles={me.data.profiles ?? []} />
+  if (me.data.activeProfileId == null || switchingProfile) {
+    return <ProfilePicker profiles={me.data.profiles ?? []} onSelected={() => setSwitchingProfile(false)} />
   }
 
-  return <MediaApp me={me.data} />
+  return <MediaApp me={me.data} onSwitchProfile={() => setSwitchingProfile(true)} />
 }
 
 export default App

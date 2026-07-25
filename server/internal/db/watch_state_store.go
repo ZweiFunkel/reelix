@@ -27,6 +27,35 @@ func (s *WatchStateStore) Upsert(ctx context.Context, profileID, itemID int64, i
 	return err
 }
 
+// GetActiveForProfile returns the profile's most recently updated
+// in-progress watch state, if it was touched within `since` — the
+// "what is this person watching right now" signal for the admin
+// dashboard, derived from the player's periodic progress reports rather
+// than a separate live-session registry.
+func (s *WatchStateStore) GetActiveForProfile(ctx context.Context, profileID int64, since time.Time) (*WatchState, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT profile_id, playable_item_id, playable_item_type, position_seconds, duration_seconds, watched, updated_at
+		FROM watch_state
+		WHERE profile_id = ? AND watched = 0 AND updated_at >= ?
+		ORDER BY updated_at DESC LIMIT 1`,
+		profileID, since.UTC().Format(time.RFC3339))
+
+	var w WatchState
+	var watched int
+	var updatedAt string
+	if err := row.Scan(&w.ProfileID, &w.PlayableItemID, &w.PlayableItemType, &w.PositionSeconds, &w.DurationSeconds, &watched, &updatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	w.Watched = watched != 0
+	if t, err := time.Parse(time.RFC3339, updatedAt); err == nil {
+		w.UpdatedAt = t
+	}
+	return &w, nil
+}
+
 func (s *WatchStateStore) Get(ctx context.Context, profileID, itemID int64, itemType string) (*WatchState, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT profile_id, playable_item_id, playable_item_type, position_seconds, duration_seconds, watched, updated_at

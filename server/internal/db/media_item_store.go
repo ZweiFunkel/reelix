@@ -116,6 +116,38 @@ func (s *MediaItemStore) ListRootItems(ctx context.Context, libraryID int64) ([]
 	return scanMediaItemRows(rows)
 }
 
+// ListRecentByLibrary returns a library's most-recently-added items
+// regardless of which category/subfolder they live in — the "Latest"
+// home-screen row, matching Jellyfin's per-library recent row.
+func (s *MediaItemStore) ListRecentByLibrary(ctx context.Context, libraryID int64, limit int) ([]MediaItem, error) {
+	rows, err := s.db.QueryContext(ctx, selectMediaItemSQL+`
+		WHERE media_item.library_id = ? AND media_item.deleted_at IS NULL
+		ORDER BY media_item.created_at DESC
+		LIMIT ?`, libraryID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMediaItemRows(rows)
+}
+
+// ListInProgress returns media items a profile has started but not
+// finished, most-recently-updated first — the "Weiterschauen" row.
+func (s *MediaItemStore) ListInProgress(ctx context.Context, profileID int64, limit int) ([]MediaItem, error) {
+	rows, err := s.db.QueryContext(ctx, selectMediaItemSQL+`
+		JOIN watch_state ON watch_state.playable_item_id = media_item.id
+			AND watch_state.playable_item_type = 'media_item'
+		WHERE watch_state.profile_id = ? AND watch_state.watched = 0
+			AND watch_state.position_seconds > 0 AND media_item.deleted_at IS NULL
+		ORDER BY watch_state.updated_at DESC
+		LIMIT ?`, profileID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMediaItemRows(rows)
+}
+
 func scanMediaItemRows(rows *sql.Rows) ([]MediaItem, error) {
 	var out []MediaItem
 	for rows.Next() {
@@ -137,8 +169,8 @@ func (s *MediaItemStore) DeleteStale(ctx context.Context, libraryID, currentGene
 }
 
 const selectMediaItemSQL = `
-	SELECT id, library_id, category_id, file_path, file_size, file_mtime,
-	       media_type, duration_seconds, codec_info, metadata, last_seen_generation, deleted_at, created_at
+	SELECT media_item.id, media_item.library_id, media_item.category_id, media_item.file_path, media_item.file_size, media_item.file_mtime,
+	       media_item.media_type, media_item.duration_seconds, media_item.codec_info, media_item.metadata, media_item.last_seen_generation, media_item.deleted_at, media_item.created_at
 	FROM media_item`
 
 func scanMediaItem(row rowScanner) (*MediaItem, error) {

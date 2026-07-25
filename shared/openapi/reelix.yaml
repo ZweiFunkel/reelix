@@ -32,6 +32,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/SystemVersion"
 
+  /api/admin/sessions:
+    get:
+      operationId: getAdminSessions
+      summary: Active login sessions — who's logged in, when last seen, and what they're playing right now
+      responses:
+        "200":
+          description: Active sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminSession"
+
   /api/setup/status:
     get:
       operationId: getSetupStatus
@@ -294,6 +308,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/CategoryChildren"
 
+  /api/libraries/{libraryId}/recent:
+    get:
+      operationId: getLibraryRecent
+      summary: A library's most-recently-added items, flattened across all its categories
+      parameters:
+        - $ref: "#/components/parameters/LibraryId"
+      responses:
+        "200":
+          description: Recently added items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MediaItem"
+
+  /api/continue-watching:
+    get:
+      operationId: getContinueWatching
+      summary: Items the active profile started but hasn't finished, most-recent first
+      responses:
+        "200":
+          description: In-progress items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MediaItem"
+
   /api/categories/{categoryId}/children:
     get:
       operationId: getCategoryChildren
@@ -517,6 +561,18 @@ components:
           allOf:
             - $ref: "#/components/schemas/Progress"
           nullable: true
+        posterUrl:
+          description: TMDb poster artwork, when a match was found (requires an admin-configured TMDb API key)
+          type: string
+          nullable: true
+        backdropUrl:
+          description: TMDb backdrop artwork, when a match was found
+          type: string
+          nullable: true
+        overview:
+          description: TMDb synopsis, when a match was found
+          type: string
+          nullable: true
 
     UpdateProgressRequest:
       type: object
@@ -600,6 +656,43 @@ components:
           type: boolean
         pin:
           type: string
+
+    NowPlaying:
+      type: object
+      properties:
+        title:
+          type: string
+        itemType:
+          type: string
+          enum: [media_item, channel]
+        isLive:
+          type: boolean
+        positionSeconds:
+          type: number
+
+    AdminSession:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        username:
+          type: string
+        profileName:
+          type: string
+          nullable: true
+        isKid:
+          type: boolean
+        loginAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        nowPlaying:
+          allOf:
+            - $ref: "#/components/schemas/NowPlaying"
+          nullable: true
 
     CategoryChildren:
       type: object
