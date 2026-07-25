@@ -36,6 +36,7 @@ type Server struct {
 	scanner        *library.Scanner
 	transcoder     *stream.Manager
 	thumbnailsDir  string
+	uploadsDir     string
 }
 
 func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir string, maxConcurrentTranscodes int) http.Handler {
@@ -63,6 +64,7 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 		scanner:        library.NewScanner(libraries, categories, items, channels, thumbnailsDir, metadata.NewClient(cfg.TMDbAPIKey)),
 		transcoder:     stream.NewManager(transcodeDir, maxConcurrentTranscodes),
 		thumbnailsDir:  thumbnailsDir,
+		uploadsDir:     cfg.UploadsDir,
 	}
 
 	authMW := auth.NewMiddleware(sessions, users, profiles)
@@ -114,6 +116,7 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 		r.With(authMW.RequireProfile).Get("/", s.handleListLibraries)
 		r.With(authMW.RequireAdmin).Post("/", s.handleCreateLibrary)
 		r.With(authMW.RequireAdmin).Post("/{libraryId}/scan", s.handleTriggerScan)
+		r.With(authMW.RequireAdmin).Post("/{libraryId}/upload", s.handleUploadToLibrary)
 	})
 	r.With(authMW.RequireProfile).Get("/api/libraries/{libraryId}/root", s.handleLibraryRoot)
 	r.With(authMW.RequireProfile).Get("/api/libraries/{libraryId}/recent", s.handleLibraryRecent)

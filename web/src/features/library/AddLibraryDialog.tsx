@@ -6,12 +6,13 @@ export function AddLibraryDialog({ onClose, onCreated }: { onClose: () => void; 
   const [name, setName] = useState('')
   const [rootPath, setRootPath] = useState('')
   const [type, setType] = useState<LibraryType>('FOLDER')
+  const [managed, setManaged] = useState(false)
   const createLibrary = useCreateLibrary()
   const triggerScan = useTriggerScan()
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const lib = await createLibrary.mutateAsync({ name, rootPath, type })
+    const lib = await createLibrary.mutateAsync(managed ? { name, type, managed: true } : { name, rootPath, type })
     if (lib?.id != null) {
       await triggerScan.mutateAsync(lib.id)
       onCreated(lib.id, lib.name ?? name)
@@ -38,21 +39,14 @@ export function AddLibraryDialog({ onClose, onCreated }: { onClose: () => void; 
         </label>
 
         <label className="flex flex-col gap-1 text-sm text-neutral-400">
-          {type === 'M3U' ? 'Playlist path or URL' : 'Root path (on the server)'}
-          <input
-            required
-            value={rootPath}
-            onChange={(e) => setRootPath(e.target.value)}
-            placeholder={type === 'M3U' ? 'https://provider.example/playlist.m3u8' : '/media/filme'}
-            className="bg-neutral-800 rounded px-3 py-2 text-neutral-100 outline-none focus:ring-1 focus:ring-red-500 font-mono text-sm"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1 text-sm text-neutral-400">
           Type
           <select
             value={type}
-            onChange={(e) => setType(e.target.value as LibraryType)}
+            onChange={(e) => {
+              const next = e.target.value as LibraryType
+              setType(next)
+              if (next === 'M3U') setManaged(false)
+            }}
             className="bg-neutral-800 rounded px-3 py-2 text-neutral-100 outline-none focus:ring-1 focus:ring-red-500"
           >
             <option value="FOLDER">Folder (movies/series)</option>
@@ -60,6 +54,26 @@ export function AddLibraryDialog({ onClose, onCreated }: { onClose: () => void; 
             <option value="M3U">M3U/IPTV playlist</option>
           </select>
         </label>
+
+        {type !== 'M3U' && (
+          <label className="flex items-center gap-2 text-sm text-neutral-300">
+            <input type="checkbox" checked={managed} onChange={(e) => setManaged(e.target.checked)} />
+            Use managed uploads folder (lets you upload files to it from the web UI)
+          </label>
+        )}
+
+        {!managed && (
+          <label className="flex flex-col gap-1 text-sm text-neutral-400">
+            {type === 'M3U' ? 'Playlist path or URL' : 'Root path (on the server)'}
+            <input
+              required
+              value={rootPath}
+              onChange={(e) => setRootPath(e.target.value)}
+              placeholder={type === 'M3U' ? 'https://provider.example/playlist.m3u8' : '/media/filme'}
+              className="bg-neutral-800 rounded px-3 py-2 text-neutral-100 outline-none focus:ring-1 focus:ring-red-500 font-mono text-sm"
+            />
+          </label>
+        )}
 
         {createLibrary.isError && (
           <p className="text-sm text-red-400">{(createLibrary.error as Error).message}</p>

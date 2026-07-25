@@ -7,10 +7,19 @@ import { getServerUrl, isNativeShell } from "./platform";
 // the bundled frontend loads from a local asset origin instead, so it
 // needs the user-configured remote server's absolute URL, and cookies
 // must be explicitly requested since they're no longer same-origin.
+const baseUrl = isNativeShell() ? getServerUrl() ?? "" : "";
+
 export const api = createClient<paths>({
-  baseUrl: isNativeShell() ? getServerUrl() ?? "" : "",
+  baseUrl,
   credentials: isNativeShell() ? "include" : "same-origin",
 });
+
+// openapi-fetch doesn't model multipart/form-data well, so file uploads
+// go through a plain fetch call using the same base URL/credentials
+// logic as the generated client above.
+export function apiFetch(path: string, init: RequestInit) {
+  return fetch(baseUrl + path, { credentials: isNativeShell() ? "include" : "same-origin", ...init })
+}
 
 // The server's error responses are always `{ error: string }` (see
 // writeError in the Go handlers) — openapi-fetch surfaces that raw JSON

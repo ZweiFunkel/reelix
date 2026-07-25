@@ -29,6 +29,12 @@ type Config struct {
 	// libraries. Empty disables the feature entirely — never a hard
 	// dependency for browsing or playback.
 	TMDbAPIKey string
+
+	// UploadsDir is a guaranteed-writable directory for libraries created
+	// via the "managed uploads" option — unlike a host-mounted media
+	// path (typically bind-mounted read-only), admins can upload
+	// directly into a library rooted here from the web UI.
+	UploadsDir string
 }
 
 func Load() Config {
@@ -46,6 +52,7 @@ func Load() Config {
 		// mail whose From doesn't match the authenticated sender domain.
 		SMTPFrom:   envOr("REELIX_SMTP_FROM", "noreply@reelix.com"),
 		TMDbAPIKey: envOr("REELIX_TMDB_API_KEY", ""),
+		UploadsDir: envOr("REELIX_UPLOADS_DIR", "/uploads"),
 	}
 }
 

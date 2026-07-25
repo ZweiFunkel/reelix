@@ -16,6 +16,7 @@ services:
     volumes:
       - reelix_config:/config
       - reelix_transcode:/transcode
+      - reelix_uploads:/uploads
       # Add one line per library root you want Reelix to see, read-only:
       - /path/to/Filme:/media/filme:ro
       - /path/to/Serien:/media/serien:ro
@@ -23,3 +24,8 @@ services:
 volumes:
   reelix_config:
   reelix_transcode:
+  # Libraries created with "managed uploads" in the web UI live here —
+  # unlike the read-only media mounts above, admins can upload directly
+  # into these from the browser. Kept as its own named volume so uploads
+  # survive `docker compose pull && up -d` image updates.
+  reelix_uploads:

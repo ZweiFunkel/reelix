@@ -360,6 +360,27 @@ paths:
         "202":
           description: Scan started
 
+  /api/libraries/{libraryId}/upload:
+    post:
+      operationId: uploadToLibrary
+      summary: Upload a file directly into a library's root (requires a writable path — see CreateLibraryRequest.managed), then rescans it
+      parameters:
+        - $ref: "#/components/parameters/LibraryId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Uploaded, rescan started
+
   /api/libraries/{libraryId}/root:
     get:
       operationId: getLibraryRoot
@@ -570,15 +591,19 @@ components:
 
     CreateLibraryRequest:
       type: object
-      required: [name, rootPath, type]
+      required: [name, type]
       properties:
         name:
           type: string
         rootPath:
+          description: Required unless managed is true
           type: string
         type:
           type: string
           enum: [FOLDER, PHOTO, M3U]
+        managed:
+          description: Root the library under the server's writable uploads directory instead of a host-mounted rootPath, so it can be uploaded into from the web UI
+          type: boolean
 
     Category:
       type: object

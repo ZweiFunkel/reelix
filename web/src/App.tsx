@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from './lib/api'
-import { useLibraries, useTriggerScan } from './features/library/hooks'
+import { useLibraries, useTriggerScan, useUploadToLibrary } from './features/library/hooks'
 import { AddLibraryDialog } from './features/library/AddLibraryDialog'
 import { useLibraryRoot, useCategoryChildren } from './features/browse/hooks'
 import { BrowseGrid } from './features/browse/BrowseGrid'
@@ -46,8 +46,17 @@ function StatusPill() {
 function LibraryHeader({ isAdmin, libraryId, onAdd }: { isAdmin: boolean; libraryId: number; onAdd: () => void }) {
   const { data: libraries } = useLibraries()
   const triggerScan = useTriggerScan()
+  const uploadToLibrary = useUploadToLibrary()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const lib = libraries?.find((l) => l.id === libraryId)
   if (!lib) return null
+
+  const onFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    await uploadToLibrary.mutateAsync({ libraryId: lib.id!, file })
+  }
 
   return (
     <div className="flex items-center justify-between">
@@ -56,9 +65,24 @@ function LibraryHeader({ isAdmin, libraryId, onAdd }: { isAdmin: boolean; librar
         <span className="text-xs text-neutral-500">
           {lib.lastScannedAt ? `Scanned ${new Date(lib.lastScannedAt).toLocaleString()}` : 'Never scanned'}
         </span>
+        {uploadToLibrary.isError && (
+          <p className="text-xs text-red-400 mt-1">{(uploadToLibrary.error as Error).message}</p>
+        )}
       </div>
       {isAdmin && (
         <div className="flex gap-2">
+          {lib.type !== 'M3U' && (
+            <>
+              <input ref={fileInputRef} type="file" onChange={onFileChosen} className="hidden" />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadToLibrary.isPending}
+                className="text-xs px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+              >
+                {uploadToLibrary.isPending ? 'Uploading…' : '↑ Upload'}
+              </button>
+            </>
+          )}
           <button
             onClick={() => triggerScan.mutate(lib.id!)}
             disabled={triggerScan.isPending}

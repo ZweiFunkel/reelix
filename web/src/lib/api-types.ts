@@ -314,6 +314,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/libraries/{libraryId}/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload a file directly into a library's root (requires a writable path — see CreateLibraryRequest.managed), then rescans it */
+        post: operations["uploadToLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/libraries/{libraryId}/root": {
         parameters: {
             query?: never;
@@ -510,9 +527,12 @@ export interface components {
         };
         CreateLibraryRequest: {
             name: string;
-            rootPath: string;
+            /** @description Required unless managed is true */
+            rootPath?: string;
             /** @enum {string} */
             type: "FOLDER" | "PHOTO" | "M3U";
+            /** @description Root the library under the server's writable uploads directory instead of a host-mounted rootPath, so it can be uploaded into from the web UI */
+            managed?: boolean;
         };
         Category: {
             id?: number;
@@ -1113,6 +1133,33 @@ export interface operations {
         responses: {
             /** @description Scan started */
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    uploadToLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                libraryId: components["parameters"]["LibraryId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Uploaded, rescan started */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

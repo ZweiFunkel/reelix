@@ -4,9 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -48,9 +54,17 @@ type createLibraryRequest struct {
 	Name     string `json:"name"`
 	RootPath string `json:"rootPath"`
 	Type     string `json:"type"`
+	// Managed roots the library under the server's guaranteed-writable
+	// uploads directory instead of a host-mounted path, so the admin can
+	// upload files into it from the web UI — a typical host media mount
+	// is bind-mounted read-only (see deploy/docker-compose.example.yml)
+	// and can't be uploaded into. RootPath is ignored when set.
+	Managed bool `json:"managed"`
 }
 
 var validLibraryTypes = map[string]bool{"FOLDER": true, "PHOTO": true, "M3U": true}
+
+var unsafeNameChars = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
 func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 	var req createLibraryRequest
@@ -58,17 +72,94 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if req.Name == "" || req.RootPath == "" || !validLibraryTypes[req.Type] {
-		writeError(w, http.StatusBadRequest, errors.New("name, rootPath and a valid type (FOLDER, PHOTO, M3U) are required"))
+	if req.Name == "" || !validLibraryTypes[req.Type] {
+		writeError(w, http.StatusBadRequest, errors.New("name and a valid type (FOLDER, PHOTO, M3U) are required"))
 		return
 	}
 
-	lib, err := s.libraries.Create(r.Context(), req.Name, req.RootPath, req.Type)
+	rootPath := req.RootPath
+	if req.Managed {
+		if req.Type == "M3U" {
+			writeError(w, http.StatusBadRequest, errors.New("M3U libraries can't be managed-uploads (they're a playlist URL/file, not a folder)"))
+			return
+		}
+		slug := strings.Trim(unsafeNameChars.ReplaceAllString(req.Name, "-"), "-")
+		if slug == "" {
+			writeError(w, http.StatusBadRequest, errors.New("name must contain at least one letter or number"))
+			return
+		}
+		rootPath = filepath.Join(s.uploadsDir, slug)
+		if err := os.MkdirAll(rootPath, 0755); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("create managed library folder: %w", err))
+			return
+		}
+	} else if rootPath == "" {
+		writeError(w, http.StatusBadRequest, errors.New("rootPath is required unless managed is true"))
+		return
+	}
+
+	lib, err := s.libraries.Create(r.Context(), req.Name, rootPath, req.Type)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toLibraryDTO(*lib))
+}
+
+// handleUploadToLibrary lets an admin add files straight into a library
+// from the web UI, then rescans it. Requires the library's root to
+// actually be writable — a host media mount following the example
+// compose file's :ro convention will fail here with a clear error;
+// managed-uploads libraries (see handleCreateLibrary) always work.
+func (s *Server) handleUploadToLibrary(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "libraryId"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	lib, err := s.libraries.Get(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, errors.New("library not found"))
+		return
+	}
+	if lib.Type == "M3U" {
+		writeError(w, http.StatusBadRequest, errors.New("can't upload files into an M3U library"))
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("missing file: %w", err))
+		return
+	}
+	defer file.Close()
+
+	name := filepath.Base(header.Filename)
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		writeError(w, http.StatusBadRequest, errors.New("invalid filename"))
+		return
+	}
+	destPath := filepath.Join(lib.RootPath, name)
+
+	dest, err := os.Create(destPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("upload failed, is this library's path writable? (%w)", err))
+		return
+	}
+	defer dest.Close()
+
+	if _, err := io.Copy(dest, file); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("upload failed while writing file: %w", err))
+		return
+	}
+
+	go func() {
+		if err := s.scanner.Scan(context.Background(), lib); err != nil {
+			log.Printf("reelix: post-upload scan of library %d failed: %v", lib.ID, err)
+		}
+	}()
+
+	writeJSON(w, http.StatusCreated, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleTriggerScan(w http.ResponseWriter, r *http.Request) {
