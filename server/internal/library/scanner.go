@@ -152,7 +152,7 @@ func (s *Scanner) upsertVideo(ctx context.Context, lib *db.Library, absPath, rel
 	item, err := s.items.Upsert(ctx, db.UpsertMediaItemParams{
 		LibraryID: lib.ID, CategoryID: categoryID, FilePath: relPath,
 		FileSize: info.Size(), FileMTime: info.ModTime(), MediaType: "video",
-		DurationSeconds: duration, CodecInfo: codec, Metadata: s.lookupMovieMetadata(ctx, relPath), Generation: generation,
+		DurationSeconds: duration, CodecInfo: codec, Metadata: s.lookupVideoMetadata(ctx, relPath, categoryID), Generation: generation,
 	})
 	if err != nil {
 		return err
@@ -169,19 +169,58 @@ func (s *Scanner) upsertVideo(ctx context.Context, lib *db.Library, absPath, rel
 	return nil
 }
 
-// lookupMovieMetadata queries TMDb (if configured) for artwork/overview
-// matching a video's filename. Best-effort: any failure or missing match
-// just leaves the item without artwork, same as if TMDb weren't configured.
-func (s *Scanner) lookupMovieMetadata(ctx context.Context, relPath string) string {
+// lookupVideoMetadata detects show/season/episode grouping from a video's
+// filename — always, whether or not TMDb is configured, since "what
+// belongs together" is a filename fact, not something that needs an
+// external match. TMDb (if configured) only enriches that with real
+// artwork/overview/episode title; a failed or missing TMDb match still
+// leaves the base show/season/episode fields intact.
+func (s *Scanner) lookupVideoMetadata(ctx context.Context, relPath string, categoryID *int64) string {
+	base := filepath.Base(relPath)
+	nameNoExt := strings.TrimSuffix(base, filepath.Ext(base))
+
+	// A show's folder name is a much more reliable title than whatever
+	// precedes "S01E06" in the filename itself (often just a release
+	// group tag) — use it as the search hint when the file lives in one.
+	// Shows are commonly organized as Show/Season N/episode.ext, so the
+	// *top-level* folder under the library is the show name, not
+	// whichever subfolder directly contains the file.
+	var folderHint string
+	if categoryID != nil {
+		if cat, err := s.categories.Get(ctx, *categoryID); err == nil && cat != nil {
+			folderHint = strings.SplitN(cat.Path, "/", 2)[0]
+		}
+	}
+
+	if showTitle, season, episode, ok := metadata.ParseEpisode(nameNoExt, folderHint); ok {
+		fallbackTitle := fmt.Sprintf("Episode %d", episode)
+		ep := metadata.Episode{
+			Kind: metadata.KindEpisode, ShowTitle: showTitle,
+			SeasonNumber: season, EpisodeNumber: episode, Title: fallbackTitle,
+		}
+
+		if s.tmdb != nil {
+			if match, err := s.tmdb.SearchEpisode(ctx, showTitle, season, episode); err != nil {
+				log.Printf("reelix: tmdb episode lookup for %q S%02dE%02d: %v", showTitle, season, episode, err)
+			} else if match != nil {
+				ep = *match
+			}
+		}
+
+		raw, err := json.Marshal(ep)
+		if err != nil {
+			return "{}"
+		}
+		return string(raw)
+	}
+
 	if s.tmdb == nil {
 		return "{}"
 	}
-	base := filepath.Base(relPath)
-	title, year := metadata.TitleAndYear(strings.TrimSuffix(base, filepath.Ext(base)))
+	title, year := metadata.TitleAndYear(nameNoExt)
 	if title == "" {
 		return "{}"
 	}
-
 	movie, err := s.tmdb.SearchMovie(ctx, title, year)
 	if err != nil {
 		log.Printf("reelix: tmdb lookup for %q: %v", title, err)

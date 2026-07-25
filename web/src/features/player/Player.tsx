@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Hls from 'hls.js'
 import { api } from '../../lib/api'
-import { useMediaItem, useChannel } from '../browse/hooks'
+import { useMediaItem, useChannel, useMediaItemSiblings } from '../browse/hooks'
 import { formatDuration, formatClockTime } from './format'
 import { PlayIcon, PauseIcon, SkipBackIcon, SkipForwardIcon, VolumeIcon, FullscreenIcon, BackIcon, SpinnerIcon } from './icons'
 
@@ -10,6 +10,7 @@ const PROGRESS_REPORT_INTERVAL_MS = 10_000
 const WATCHED_THRESHOLD = 0.9
 const SKIP_SECONDS = 10
 const CONTROLS_IDLE_HIDE_MS = 3_000
+const NEXT_EPISODE_PROMPT_SECONDS = 15
 
 function reportProgress(mediaItemId: number, video: HTMLVideoElement) {
   if (!video.duration || Number.isNaN(video.duration)) return
@@ -27,15 +28,23 @@ export function Player({
   mediaItemId,
   itemType = 'media_item',
   onClose,
+  onNext,
 }: {
   mediaItemId: number
   itemType?: 'media_item' | 'channel'
   onClose: () => void
+  onNext?: (mediaItemId: number) => void
 }) {
   const isChannel = itemType === 'channel'
   const mediaItemQuery = useMediaItem(isChannel ? null : mediaItemId)
   const channelQuery = useChannel(isChannel ? mediaItemId : null)
   const { data: item, isLoading } = isChannel ? channelQuery : mediaItemQuery
+  const siblings = useMediaItemSiblings(isChannel ? null : mediaItemId)
+  const nextItem = (() => {
+    if (!siblings.data) return null
+    const idx = siblings.data.findIndex((s) => s.id === mediaItemId)
+    return idx >= 0 ? siblings.data[idx + 1] ?? null : null
+  })()
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -211,9 +220,22 @@ export function Player({
             setVolume(e.currentTarget.volume)
             setMuted(e.currentTarget.muted)
           }}
+          onEnded={() => {
+            if (nextItem?.id != null && onNext) onNext(nextItem.id)
+            else handleClose()
+          }}
         />
         {buffering && (
           <SpinnerIcon className="w-12 h-12 text-white/80 animate-spin absolute pointer-events-none" />
+        )}
+        {!isLive && nextItem && remaining <= NEXT_EPISODE_PROMPT_SECONDS && onNext && (
+          <button
+            onClick={() => onNext(nextItem.id!)}
+            className="absolute bottom-6 right-6 flex items-center gap-2 px-4 py-2.5 rounded bg-neutral-900/90 border border-neutral-700 hover:bg-neutral-800 text-sm font-medium"
+          >
+            Next: {nextItem.title}
+            <SkipForwardIcon className="w-4 h-4" />
+          </button>
         )}
       </div>
 

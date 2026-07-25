@@ -450,6 +450,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/media-items/{mediaItemId}/siblings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Other items in the same folder, ordered by episode number when available — the "More from Season X" row, and how the player finds what's next */
+        get: operations["getMediaItemSiblings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/media-items/{mediaItemId}/progress": {
         parameters: {
             query?: never;
@@ -560,6 +577,12 @@ export interface components {
             backdropUrl?: string | null;
             /** @description TMDb synopsis, when a match was found */
             overview?: string | null;
+            /** @description TMDb vote average, when a match was found */
+            rating?: number | null;
+            /** @description Set only for TV episodes */
+            showTitle?: string | null;
+            seasonNumber?: number | null;
+            episodeNumber?: number | null;
         };
         UpdateProgressRequest: {
             positionSeconds: number;
@@ -1312,6 +1335,28 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getMediaItemSiblings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mediaItemId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sibling items (includes this one) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaItem"][];
+                };
             };
         };
     };

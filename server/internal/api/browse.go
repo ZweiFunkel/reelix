@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -47,6 +48,12 @@ type mediaItemDTO struct {
 	PosterURL       *string      `json:"posterUrl"`
 	BackdropURL     *string      `json:"backdropUrl"`
 	Overview        *string      `json:"overview"`
+	Rating          *float64     `json:"rating"`
+	// Set only for TV episodes (see metadata.Episode) — lets the frontend
+	// show "S01E06 · Episode Title" and group/sort a show's episodes.
+	ShowTitle     *string `json:"showTitle"`
+	SeasonNumber  *int    `json:"seasonNumber"`
+	EpisodeNumber *int    `json:"episodeNumber"`
 }
 
 func toMediaItemDTO(m db.MediaItem) mediaItemDTO {
@@ -54,8 +61,40 @@ func toMediaItemDTO(m db.MediaItem) mediaItemDTO {
 	title := strings.TrimSuffix(base, path.Ext(base))
 	dto := mediaItemDTO{ID: m.ID, ItemType: "media_item", Title: title, FilePath: m.FilePath, DurationSeconds: m.DurationSeconds, MediaType: m.MediaType}
 
-	var movie metadata.Movie
-	if json.Unmarshal([]byte(m.Metadata), &movie) == nil && movie.TMDbID != 0 {
+	var kind struct {
+		Kind string `json:"kind"`
+	}
+	if json.Unmarshal([]byte(m.Metadata), &kind) != nil {
+		return dto
+	}
+
+	switch kind.Kind {
+	case metadata.KindEpisode:
+		var ep metadata.Episode
+		if json.Unmarshal([]byte(m.Metadata), &ep) != nil {
+			return dto
+		}
+		dto.Title = ep.Title
+		dto.ShowTitle = &ep.ShowTitle
+		dto.SeasonNumber = &ep.SeasonNumber
+		dto.EpisodeNumber = &ep.EpisodeNumber
+		if url := ep.PosterURL(); url != "" {
+			dto.PosterURL = &url
+		}
+		if url := ep.BackdropURL(); url != "" {
+			dto.BackdropURL = &url
+		}
+		if ep.Overview != "" {
+			dto.Overview = &ep.Overview
+		}
+		if ep.VoteAverage > 0 {
+			dto.Rating = &ep.VoteAverage
+		}
+	case metadata.KindMovie:
+		var movie metadata.Movie
+		if json.Unmarshal([]byte(m.Metadata), &movie) != nil {
+			return dto
+		}
 		if movie.Title != "" {
 			dto.Title = movie.Title
 		}
@@ -67,6 +106,9 @@ func toMediaItemDTO(m db.MediaItem) mediaItemDTO {
 		}
 		if movie.Overview != "" {
 			dto.Overview = &movie.Overview
+		}
+		if movie.VoteAverage > 0 {
+			dto.Rating = &movie.VoteAverage
 		}
 	}
 	return dto
@@ -227,6 +269,54 @@ func (s *Server) handleContinueWatching(w http.ResponseWriter, r *http.Request) 
 	for i, m := range items {
 		dtos[i] = toMediaItemDTO(m)
 	}
+	dtos = s.attachProgress(r.Context(), dtos)
+	writeJSON(w, http.StatusOK, dtos)
+}
+
+// handleMediaItemSiblings lists the other items in the same folder as a
+// media item, ordered by episode number when available — the "More from
+// Season X" row on the detail page, and how the player finds "what's
+// next" (the first sibling after this one in the returned list).
+func (s *Server) handleMediaItemSiblings(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "mediaItemId"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	item, err := s.items.Get(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, errors.New("media item not found"))
+		return
+	}
+
+	var siblings []db.MediaItem
+	if item.CategoryID != nil {
+		siblings, err = s.items.ListByCategory(r.Context(), *item.CategoryID)
+	} else {
+		siblings, err = s.items.ListRootItems(r.Context(), item.LibraryID)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	dtos := make([]mediaItemDTO, 0, len(siblings))
+	for _, m := range siblings {
+		if m.MediaType == "photo" {
+			continue
+		}
+		dtos = append(dtos, toMediaItemDTO(m))
+	}
+	sort.SliceStable(dtos, func(i, j int) bool {
+		if dtos[i].SeasonNumber != nil && dtos[j].SeasonNumber != nil && *dtos[i].SeasonNumber != *dtos[j].SeasonNumber {
+			return *dtos[i].SeasonNumber < *dtos[j].SeasonNumber
+		}
+		if dtos[i].EpisodeNumber != nil && dtos[j].EpisodeNumber != nil {
+			return *dtos[i].EpisodeNumber < *dtos[j].EpisodeNumber
+		}
+		return false // preserve existing (filename) order otherwise
+	})
+
 	dtos = s.attachProgress(r.Context(), dtos)
 	writeJSON(w, http.StatusOK, dtos)
 }

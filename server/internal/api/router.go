@@ -136,6 +136,7 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 		r.Head("/{mediaItemId}/stream/segments/*", s.handleStreamSegment)
 		r.Post("/{mediaItemId}/progress", s.handleUpdateProgress)
 		r.Get("/{mediaItemId}/thumbnail", s.handleThumbnail)
+		r.Get("/{mediaItemId}/siblings", s.handleMediaItemSiblings)
 	})
 
 	r.Route("/api/channels", func(r chi.Router) {

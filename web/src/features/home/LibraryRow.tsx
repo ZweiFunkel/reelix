@@ -5,11 +5,13 @@ export function LibraryRow({
   libraryId,
   label,
   onPlay,
+  onOpenDetail,
   onOpenPhoto,
 }: {
   libraryId: number
   label: string
   onPlay: (mediaItemId: number, itemType: 'media_item' | 'channel') => void
+  onOpenDetail: (mediaItemId: number) => void
   onOpenPhoto: (mediaItemId: number) => void
 }) {
   const recent = useLibraryRecent(libraryId)
@@ -21,7 +23,7 @@ export function LibraryRow({
       <div className="flex gap-3 overflow-x-auto pb-2">
         {recent.data.map((item) => (
           <div key={item.id} className="w-36 shrink-0">
-            <MediaTile item={item} onPlay={onPlay} onOpenPhoto={onOpenPhoto} />
+            <MediaTile item={item} onPlay={onPlay} onOpenDetail={onOpenDetail} onOpenPhoto={onOpenPhoto} />
           </div>
         ))}
       </div>

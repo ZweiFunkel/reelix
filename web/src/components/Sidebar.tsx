@@ -2,7 +2,11 @@ import type { Library } from '../lib/types'
 import { HomeIcon, FilmIcon, ShieldIcon } from './icons'
 
 export type PathEntry = { libraryId: number; categoryId: number | null; label: string }
-export type Page = { kind: 'home' } | { kind: 'browse'; path: PathEntry[] } | { kind: 'admin' }
+export type Page =
+  | { kind: 'home' }
+  | { kind: 'browse'; path: PathEntry[] }
+  | { kind: 'admin' }
+  | { kind: 'detail'; mediaItemId: number }
 
 export function Sidebar({
   libraries,

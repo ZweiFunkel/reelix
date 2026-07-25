@@ -40,6 +40,14 @@ export function useContinueWatching() {
   })
 }
 
+export function useMediaItemSiblings(mediaItemId: number | null) {
+  return useQuery({
+    queryKey: ['media-item-siblings', mediaItemId],
+    enabled: mediaItemId != null,
+    queryFn: () => api.GET('/api/media-items/{mediaItemId}/siblings', { params: { path: { mediaItemId: mediaItemId! } } }).then(unwrap),
+  })
+}
+
 export function useChannel(channelId: number | null) {
   return useQuery({
     queryKey: ['channel', channelId],

@@ -8,6 +8,7 @@ import { BrowseGrid } from './features/browse/BrowseGrid'
 import { PhotoLightbox } from './features/browse/PhotoLightbox'
 import { HomePage } from './features/home/HomePage'
 import { AdminPage } from './features/admin/AdminPage'
+import { DetailPage } from './features/detail/DetailPage'
 import { Player } from './features/player/Player'
 import { useSetupStatus, useMe } from './features/auth/hooks'
 import { SetupPage } from './features/auth/SetupPage'
@@ -121,11 +122,13 @@ function BrowseView({
   entry,
   onOpenCategory,
   onPlay,
+  onOpenDetail,
   onOpenPhoto,
 }: {
   entry: PathEntry
   onOpenCategory: (categoryId: number, label: string) => void
   onPlay: (id: number, itemType: 'media_item' | 'channel') => void
+  onOpenDetail: (id: number) => void
   onOpenPhoto: (id: number) => void
 }) {
   const root = useLibraryRoot(entry.categoryId === null ? entry.libraryId : null)
@@ -143,6 +146,7 @@ function BrowseView({
         onOpenCategory(id, cat?.name ?? 'Category')
       }}
       onPlay={onPlay}
+      onOpenDetail={onOpenDetail}
       onOpenPhoto={onOpenPhoto}
     />
   )
@@ -161,6 +165,7 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
   const isAdmin = me.user?.role === 'admin' && !activeProfile?.isKid
 
   const current = page.kind === 'browse' ? page.path[page.path.length - 1] : undefined
+  const openDetail = (id: number) => setPage({ kind: 'detail', mediaItemId: id })
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex">
@@ -196,6 +201,7 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
                   setPage({ kind: 'browse', path: [...page.path, { libraryId: current.libraryId, categoryId, label }] })
                 }
                 onPlay={(id, itemType) => setPlaying({ id, itemType })}
+                onOpenDetail={openDetail}
                 onOpenPhoto={(id) => setPhotoId(id)}
               />
             </>
@@ -206,6 +212,7 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
               libraries={libraries}
               isAdmin={isAdmin}
               onPlay={(id, itemType) => setPlaying({ id, itemType })}
+              onOpenDetail={openDetail}
               onOpenPhoto={(id) => setPhotoId(id)}
               onNavigate={setPage}
               onAddLibrary={() => setShowAddLibrary(true)}
@@ -213,6 +220,16 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
           )}
 
           {page.kind === 'admin' && isAdmin && <AdminPage />}
+
+          {page.kind === 'detail' && (
+            <DetailPage
+              mediaItemId={page.mediaItemId}
+              onBack={() => setPage({ kind: 'home' })}
+              onPlay={(id, itemType) => setPlaying({ id, itemType })}
+              onOpenDetail={openDetail}
+              onOpenPhoto={(id) => setPhotoId(id)}
+            />
+          )}
         </main>
       </div>
 
@@ -231,7 +248,13 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
       )}
 
       {playing != null && (
-        <Player mediaItemId={playing.id} itemType={playing.itemType} onClose={() => setPlaying(null)} />
+        <Player
+          key={playing.id}
+          mediaItemId={playing.id}
+          itemType={playing.itemType}
+          onClose={() => setPlaying(null)}
+          onNext={(id) => setPlaying({ id, itemType: 'media_item' })}
+        />
       )}
       {photoId != null && <PhotoLightbox mediaItemId={photoId} onClose={() => setPhotoId(null)} />}
     </div>

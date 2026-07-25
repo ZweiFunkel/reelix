@@ -489,6 +489,26 @@ paths:
         "200":
           description: JPEG thumbnail
 
+  /api/media-items/{mediaItemId}/siblings:
+    get:
+      operationId: getMediaItemSiblings
+      summary: Other items in the same folder, ordered by episode number when available — the "More from Season X" row, and how the player finds what's next
+      parameters:
+        - name: mediaItemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Sibling items (includes this one)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MediaItem"
+
   /api/media-items/{mediaItemId}/progress:
     post:
       operationId: updateProgress
@@ -663,6 +683,20 @@ components:
         overview:
           description: TMDb synopsis, when a match was found
           type: string
+          nullable: true
+        rating:
+          description: TMDb vote average, when a match was found
+          type: number
+          nullable: true
+        showTitle:
+          description: Set only for TV episodes
+          type: string
+          nullable: true
+        seasonNumber:
+          type: integer
+          nullable: true
+        episodeNumber:
+          type: integer
           nullable: true
 
     UpdateProgressRequest:
