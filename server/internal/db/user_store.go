@@ -86,6 +86,12 @@ func (s *UserStore) UpdateUsername(ctx context.Context, id int64, username strin
 	return err
 }
 
+// UpdateRole promotes/demotes an account between "admin" and "user".
+func (s *UserStore) UpdateRole(ctx context.Context, id int64, role string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE user SET role = ? WHERE id = ?`, role, id)
+	return err
+}
+
 const selectUserSQL = `SELECT id, username, password_hash, role, email, email_verified, created_at FROM user`
 
 func scanUser(row rowScanner) (*User, error) {

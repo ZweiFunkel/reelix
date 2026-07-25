@@ -80,6 +80,13 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 
 	r.With(authMW.RequireAdmin).Get("/api/admin/sessions", s.handleAdminSessions)
 
+	r.Route("/api/admin/users", func(r chi.Router) {
+		r.Use(authMW.RequireAdmin)
+		r.Get("/", s.handleAdminListUsers)
+		r.Post("/", s.handleAdminCreateUser)
+		r.Patch("/{userId}/role", s.handleAdminUpdateUserRole)
+	})
+
 	r.Route("/api/setup", func(r chi.Router) {
 		r.Get("/status", s.handleSetupStatus)
 		r.Post("/admin", s.handleSetupAdmin)

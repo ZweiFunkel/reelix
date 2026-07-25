@@ -46,6 +46,72 @@ paths:
                 items:
                   $ref: "#/components/schemas/AdminSession"
 
+  /api/admin/users:
+    get:
+      operationId: getAdminUsers
+      summary: List every account
+      responses:
+        "200":
+          description: Accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createAdminUser
+      summary: Create another account to share the server with
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                role:
+                  type: string
+                  enum: [admin, user]
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "409":
+          description: Username already taken
+
+  /api/admin/users/{userId}/role:
+    patch:
+      operationId: updateAdminUserRole
+      summary: Promote/demote an account (cannot demote your own)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [admin, user]
+      responses:
+        "200":
+          description: Updated
+
   /api/setup/status:
     get:
       operationId: getSetupStatus
