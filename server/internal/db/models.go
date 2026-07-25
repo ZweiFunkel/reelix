@@ -14,12 +14,12 @@ type Library struct {
 }
 
 type Category struct {
-	ID                int64
-	LibraryID         int64
-	ParentCategoryID  *int64
-	Name              string
-	Path              string
-	SortOrder         int
+	ID                 int64
+	LibraryID          int64
+	ParentCategoryID   *int64
+	Name               string
+	Path               string
+	SortOrder          int
 	LastSeenGeneration int64
 }
 
@@ -58,7 +58,16 @@ type User struct {
 	Username     string
 	PasswordHash string
 	Role         string // admin | user
+	Email        *string
 	CreatedAt    time.Time
+}
+
+type PasswordResetToken struct {
+	ID        int64
+	UserID    int64
+	Code      string
+	ExpiresAt time.Time
+	Used      bool
 }
 
 type Profile struct {
@@ -78,11 +87,11 @@ type Session struct {
 }
 
 type WatchState struct {
-	ProfileID         int64
-	PlayableItemID    int64
-	PlayableItemType  string // media_item | channel
-	PositionSeconds   float64
-	DurationSeconds   *float64
-	Watched           bool
-	UpdatedAt         time.Time
+	ProfileID        int64
+	PlayableItemID   int64
+	PlayableItemType string // media_item | channel
+	PositionSeconds  float64
+	DurationSeconds  *float64
+	Watched          bool
+	UpdatedAt        time.Time
 }

@@ -12,6 +12,7 @@ import { SetupPage } from './features/auth/SetupPage'
 import { LoginPage } from './features/auth/LoginPage'
 import { ProfilePicker } from './features/auth/ProfilePicker'
 import { ServerConnectPage } from './features/auth/ServerConnectPage'
+import { AccountSettingsModal } from './features/auth/AccountSettingsModal'
 import { isNativeShell, getServerUrl } from './lib/platform'
 import type { MeResponse } from './lib/types'
 
@@ -147,6 +148,7 @@ function MediaApp({ me }: { me: MeResponse }) {
   const [showAddLibrary, setShowAddLibrary] = useState(false)
   const [playing, setPlaying] = useState<{ id: number; itemType: 'media_item' | 'channel' } | null>(null)
   const [photoId, setPhotoId] = useState<number | null>(null)
+  const [showAccountSettings, setShowAccountSettings] = useState(false)
   const logout = useLogout()
   const activeProfile = me.profiles?.find((p) => p.id === me.activeProfileId)
   // A kid profile never gets admin controls, even under an admin account —
@@ -164,6 +166,9 @@ function MediaApp({ me }: { me: MeResponse }) {
         <div className="flex items-center gap-4">
           <StatusPill />
           <span className="text-sm text-neutral-400">{activeProfile?.displayName}</span>
+          <button onClick={() => setShowAccountSettings(true)} className="text-sm text-neutral-400 hover:text-white">
+            Account
+          </button>
           <button onClick={() => logout.mutate()} className="text-sm text-neutral-400 hover:text-white">
             Sign out
           </button>
@@ -194,6 +199,10 @@ function MediaApp({ me }: { me: MeResponse }) {
           />
         )}
       </main>
+
+      {showAccountSettings && me.user && (
+        <AccountSettingsModal user={me.user} onClose={() => setShowAccountSettings(false)} />
+      )}
 
       {showAddLibrary && (
         <AddLibraryDialog

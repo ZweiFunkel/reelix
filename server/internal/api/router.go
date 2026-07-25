@@ -10,8 +10,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/novex-labs/reelix/server/internal/auth"
+	"github.com/novex-labs/reelix/server/internal/config"
 	"github.com/novex-labs/reelix/server/internal/db"
 	"github.com/novex-labs/reelix/server/internal/library"
+	"github.com/novex-labs/reelix/server/internal/mail"
 	"github.com/novex-labs/reelix/server/internal/stream"
 	"github.com/novex-labs/reelix/server/internal/webui"
 )
@@ -20,20 +22,22 @@ import (
 var Version = "dev"
 
 type Server struct {
-	libraries     *db.LibraryStore
-	categories    *db.CategoryStore
-	items         *db.MediaItemStore
-	channels      *db.ChannelStore
-	users         *db.UserStore
-	profiles      *db.ProfileStore
-	sessions      *db.SessionStore
-	watchStates   *db.WatchStateStore
-	scanner       *library.Scanner
-	transcoder    *stream.Manager
-	thumbnailsDir string
+	libraries      *db.LibraryStore
+	categories     *db.CategoryStore
+	items          *db.MediaItemStore
+	channels       *db.ChannelStore
+	users          *db.UserStore
+	profiles       *db.ProfileStore
+	sessions       *db.SessionStore
+	watchStates    *db.WatchStateStore
+	passwordResets *db.PasswordResetTokenStore
+	mailer         *mail.Sender
+	scanner        *library.Scanner
+	transcoder     *stream.Manager
+	thumbnailsDir  string
 }
 
-func NewRouter(dbConn *sql.DB, thumbnailsDir, transcodeDir string, maxConcurrentTranscodes int) http.Handler {
+func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir string, maxConcurrentTranscodes int) http.Handler {
 	libraries := db.NewLibraryStore(dbConn)
 	categories := db.NewCategoryStore(dbConn)
 	items := db.NewMediaItemStore(dbConn)
@@ -42,19 +46,22 @@ func NewRouter(dbConn *sql.DB, thumbnailsDir, transcodeDir string, maxConcurrent
 	profiles := db.NewProfileStore(dbConn)
 	sessions := db.NewSessionStore(dbConn)
 	watchStates := db.NewWatchStateStore(dbConn)
+	passwordResets := db.NewPasswordResetTokenStore(dbConn)
 
 	s := &Server{
-		libraries:     libraries,
-		categories:    categories,
-		items:         items,
-		channels:      channels,
-		users:         users,
-		profiles:      profiles,
-		sessions:      sessions,
-		watchStates:   watchStates,
-		scanner:       library.NewScanner(libraries, categories, items, channels, thumbnailsDir),
-		transcoder:    stream.NewManager(transcodeDir, maxConcurrentTranscodes),
-		thumbnailsDir: thumbnailsDir,
+		libraries:      libraries,
+		categories:     categories,
+		items:          items,
+		channels:       channels,
+		users:          users,
+		profiles:       profiles,
+		sessions:       sessions,
+		watchStates:    watchStates,
+		passwordResets: passwordResets,
+		mailer:         mail.NewSender(cfg),
+		scanner:        library.NewScanner(libraries, categories, items, channels, thumbnailsDir),
+		transcoder:     stream.NewManager(transcodeDir, maxConcurrentTranscodes),
+		thumbnailsDir:  thumbnailsDir,
 	}
 
 	authMW := auth.NewMiddleware(sessions, users, profiles)
@@ -78,6 +85,9 @@ func NewRouter(dbConn *sql.DB, thumbnailsDir, transcodeDir string, maxConcurrent
 		r.Post("/login", s.handleLogin)
 		r.Post("/logout", s.handleLogout)
 		r.With(authMW.RequireAuth).Get("/me", s.handleMe)
+		r.With(authMW.RequireAuth).Patch("/me", s.handleUpdateMe)
+		r.Post("/forgot-password", s.handleForgotPassword)
+		r.Post("/reset-password", s.handleResetPassword)
 	})
 
 	r.Route("/api/profiles", func(r chi.Router) {

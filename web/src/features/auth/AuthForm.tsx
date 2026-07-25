@@ -7,6 +7,7 @@ export function AuthForm({
   pending,
   error,
   onSubmit,
+  footer,
 }: {
   title: string
   subtitle: string
@@ -14,6 +15,7 @@ export function AuthForm({
   pending: boolean
   error?: string | null
   onSubmit: (username: string, password: string) => void
+  footer?: React.ReactNode
 }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -62,6 +64,8 @@ export function AuthForm({
         >
           {pending ? '…' : submitLabel}
         </button>
+
+        {footer}
       </form>
     </div>
   )

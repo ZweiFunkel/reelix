@@ -63,3 +63,12 @@ func (s *SessionStore) Delete(ctx context.Context, sessionID string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM session WHERE id = ?`, sessionID)
 	return err
 }
+
+// DeleteAllForUser signs the account out everywhere — used after a
+// password reset, since a code that could reset the password could also
+// have been intercepted, and any existing sessions were authenticated
+// with the now-replaced password.
+func (s *SessionStore) DeleteAllForUser(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM session WHERE user_id = ?`, userID)
+	return err
+}

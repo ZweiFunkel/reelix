@@ -14,6 +14,16 @@ type Config struct {
 	TranscodeDir string
 	// MaxConcurrentTranscodes caps simultaneous ffmpeg sessions.
 	MaxConcurrentTranscodes int
+
+	// SMTP settings for password-reset emails. SMTPHost empty means
+	// email sending is disabled — reset codes are logged to the server
+	// console instead, so self-hosters without SMTP configured aren't
+	// silently locked out of the feature.
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
 }
 
 func Load() Config {
@@ -22,6 +32,11 @@ func Load() Config {
 		DataDir:                 envOr("REELIX_DATA_DIR", "/config"),
 		TranscodeDir:            envOr("REELIX_TRANSCODE_DIR", "/transcode"),
 		MaxConcurrentTranscodes: envIntOr("REELIX_MAX_CONCURRENT_TRANSCODES", 2),
+		SMTPHost:                envOr("REELIX_SMTP_HOST", ""),
+		SMTPPort:                envIntOr("REELIX_SMTP_PORT", 587),
+		SMTPUsername:            envOr("REELIX_SMTP_USERNAME", ""),
+		SMTPPassword:            envOr("REELIX_SMTP_PASSWORD", ""),
+		SMTPFrom:                envOr("REELIX_SMTP_FROM", "reelix@localhost"),
 	}
 }
 

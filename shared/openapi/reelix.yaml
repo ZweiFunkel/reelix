@@ -98,6 +98,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MeResponse"
+    patch:
+      operationId: updateMe
+      summary: Update the current account (currently just email, for password-reset delivery)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+      responses:
+        "200":
+          description: Updated
+
+  /api/auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      summary: Request a password-reset code by email (always 200, doesn't leak account existence)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username:
+                  type: string
+      responses:
+        "200":
+          description: If the account has an email on file, a reset code was sent
+
+  /api/auth/reset-password:
+    post:
+      operationId: resetPassword
+      summary: Reset a password using the emailed code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, code, newPassword]
+              properties:
+                username:
+                  type: string
+                code:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        "200":
+          description: Password changed, all sessions for the account signed out
 
   /api/profiles:
     get:
@@ -455,6 +511,9 @@ components:
         role:
           type: string
           enum: [admin, user]
+        email:
+          type: string
+          nullable: true
 
     Profile:
       type: object

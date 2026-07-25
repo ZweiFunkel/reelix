@@ -42,13 +42,27 @@ func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, 
 	return scanUser(s.db.QueryRowContext(ctx, selectUserSQL+` WHERE username = ?`, username))
 }
 
-const selectUserSQL = `SELECT id, username, password_hash, role, created_at FROM user`
+func (s *UserStore) UpdatePassword(ctx context.Context, id int64, passwordHash string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE user SET password_hash = ? WHERE id = ?`, passwordHash, id)
+	return err
+}
+
+func (s *UserStore) UpdateEmail(ctx context.Context, id int64, email string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE user SET email = ? WHERE id = ?`, email, id)
+	return err
+}
+
+const selectUserSQL = `SELECT id, username, password_hash, role, email, created_at FROM user`
 
 func scanUser(row rowScanner) (*User, error) {
 	var u User
 	var createdAt string
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &createdAt); err != nil {
+	var email sql.NullString
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &email, &createdAt); err != nil {
 		return nil, err
+	}
+	if email.Valid {
+		u.Email = &email.String
 	}
 	if t, err := time.Parse("2006-01-02 15:04:05", createdAt); err == nil {
 		u.CreatedAt = t

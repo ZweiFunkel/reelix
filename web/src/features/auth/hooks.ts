@@ -67,3 +67,24 @@ export function useSelectProfile() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
   })
 }
+
+export function useUpdateEmail() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (email: string) => api.PATCH('/api/auth/me', { body: { email } }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  })
+}
+
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: (username: string) => api.POST('/api/auth/forgot-password', { body: { username } }).then(unwrap),
+  })
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: (body: { username: string; code: string; newPassword: string }) =>
+      api.POST('/api/auth/reset-password', { body }).then(unwrap),
+  })
+}
