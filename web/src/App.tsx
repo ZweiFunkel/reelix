@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from './lib/api'
 import { useLibraries, useTriggerScan, useUploadToLibrary, useDeleteLibrary } from './features/library/hooks'
@@ -21,6 +21,7 @@ import { EmailVerificationGate } from './features/auth/EmailVerificationGate'
 import { isNativeShell, getServerUrl } from './lib/platform'
 import { Sidebar, type Page, type PathEntry } from './components/Sidebar'
 import { UserMenu } from './components/UserMenu'
+import { pageToPath, pageFromLocation, LOADING_LABEL } from './lib/routing'
 import type { MeResponse } from './lib/types'
 
 function useHealth() {
@@ -181,12 +182,56 @@ function BrowseView({
 }
 
 function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: () => void }) {
-  const [page, setPage] = useState<Page>({ kind: 'home' })
+  // pageRaw/setPageRaw never touch browser history — used for restoring
+  // from a URL (initial load, back/forward) where pushing again would
+  // just duplicate the current history entry. setPage (below) is what
+  // every actual in-app navigation should call.
+  const [page, setPageRaw] = useState<Page>(() => pageFromLocation())
+  const setPage = (next: Page) => {
+    setPageRaw(next)
+    window.history.pushState(null, '', pageToPath(next))
+  }
+
+  useEffect(() => {
+    const onPopState = () => setPageRaw(pageFromLocation())
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
   const [showAddLibrary, setShowAddLibrary] = useState(false)
   const [playing, setPlaying] = useState<{ id: number; itemType: 'media_item' | 'channel' } | null>(null)
   const [photoId, setPhotoId] = useState<number | null>(null)
   const [showAccountSettings, setShowAccountSettings] = useState(false)
   const { data: libraries } = useLibraries()
+
+  // A browse page restored from a bare URL only has ids, not names —
+  // fill in the real breadcrumb labels once (per entry) without
+  // pushing a new history entry for it.
+  useEffect(() => {
+    if (page.kind !== 'browse') return
+    if (!page.path.some((e) => e.label === LOADING_LABEL)) return
+    let cancelled = false
+    ;(async () => {
+      const resolved = await Promise.all(
+        page.path.map(async (entry) => {
+          if (entry.label !== LOADING_LABEL) return entry
+          if (entry.categoryId == null) {
+            if (!libraries) return entry
+            const lib = libraries.find((l) => l.id === entry.libraryId)
+            return { ...entry, label: lib?.name ?? 'Library' }
+          }
+          const { data } = await api.GET('/api/categories/{categoryId}', { params: { path: { categoryId: entry.categoryId } } })
+          return { ...entry, label: data?.name ?? 'Category' }
+        }),
+      )
+      if (!cancelled) setPageRaw({ kind: 'browse', path: resolved })
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, libraries])
+
   const activeProfile = me.profiles?.find((p) => p.id === me.activeProfileId)
   // A kid profile never gets admin controls, even under an admin account —
   // the server enforces this too (RequireAdmin), this just keeps the UI honest.

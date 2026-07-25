@@ -99,6 +99,21 @@ func (e Episode) StillURL() string {
 	return imageBaseURL + "/w300" + e.StillPath
 }
 
+// CastMember is one credited actor/role, the "Besetzung" row Jellyfin
+// shows on a show/movie's detail page.
+type CastMember struct {
+	Name        string `json:"name"`
+	Character   string `json:"character,omitempty"`
+	ProfilePath string `json:"profilePath,omitempty"`
+}
+
+func (c CastMember) PhotoURL() string {
+	if c.ProfilePath == "" {
+		return ""
+	}
+	return imageBaseURL + "/w185" + c.ProfilePath
+}
+
 type Client struct {
 	apiKey string
 	http   *http.Client
@@ -267,6 +282,50 @@ func (c *Client) SearchEpisode(ctx context.Context, showTitle string, season, ep
 		AirDate: parsed.AirDate, VoteAverage: parsed.VoteAverage, StillPath: parsed.StillPath,
 		ShowPosterPath: show.PosterPath, ShowBackdropPath: show.BackdropPath,
 	}, nil
+}
+
+type creditsResponse struct {
+	Cast []struct {
+		Name        string `json:"name"`
+		Character   string `json:"character"`
+		ProfilePath string `json:"profile_path"`
+	} `json:"cast"`
+}
+
+// GetShowCast returns the top-billed cast for a show — fetched live on
+// each show-page view rather than cached in MediaItem.Metadata, since
+// cast is a show-level fact, not per-episode, and would otherwise need
+// its own storage; a self-hosted install's request volume makes an
+// extra TMDb call per view a non-issue.
+func (c *Client) GetShowCast(ctx context.Context, showTMDbID int64) ([]CastMember, error) {
+	creditsURL := fmt.Sprintf("https://api.themoviedb.org/3/tv/%d/credits?api_key=%s", showTMDbID, c.apiKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, creditsURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("tmdb credits: unexpected status %d", resp.StatusCode)
+	}
+
+	var parsed creditsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return nil, err
+	}
+
+	const maxCast = 12
+	if len(parsed.Cast) > maxCast {
+		parsed.Cast = parsed.Cast[:maxCast]
+	}
+	cast := make([]CastMember, len(parsed.Cast))
+	for i, member := range parsed.Cast {
+		cast[i] = CastMember{Name: member.Name, Character: member.Character, ProfilePath: member.ProfilePath}
+	}
+	return cast, nil
 }
 
 var yearInParens = regexp.MustCompile(`\((\d{4})\)`)

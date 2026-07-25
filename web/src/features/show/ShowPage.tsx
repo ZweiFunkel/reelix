@@ -40,6 +40,27 @@ export function ShowPage({
         {show.overview && <p className="text-sm text-neutral-300 leading-relaxed">{show.overview}</p>}
       </div>
 
+      {show.cast && show.cast.length > 0 && (
+        <div className="px-6 flex flex-col gap-3">
+          <h2 className="text-lg font-medium">Cast</h2>
+          <div className="flex gap-4 overflow-x-auto pb-2">
+            {show.cast.map((member, i) => (
+              <div key={i} className="w-20 shrink-0 flex flex-col items-center gap-1.5 text-center">
+                {member.photoUrl ? (
+                  <img src={member.photoUrl} alt={member.name} className="w-20 h-20 rounded-full object-cover" />
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-neutral-800 flex items-center justify-center text-neutral-500 text-xl font-medium">
+                    {member.name?.[0]}
+                  </div>
+                )}
+                <span className="text-xs text-neutral-200 line-clamp-2">{member.name}</span>
+                {member.character && <span className="text-[11px] text-neutral-500 line-clamp-1">{member.character}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="px-6 flex flex-col gap-8">
         {(show.seasons ?? []).map((season) => (
           <section key={season.seasonNumber} className="flex flex-col gap-3">

@@ -435,6 +435,24 @@ paths:
                 items:
                   $ref: "#/components/schemas/MediaItem"
 
+  /api/categories/{categoryId}:
+    get:
+      operationId: getCategory
+      summary: A single category's own name/path — used to rebuild breadcrumbs after a page reload
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+
   /api/categories/{categoryId}/children:
     get:
       operationId: getCategoryChildren
@@ -885,6 +903,17 @@ components:
           items:
             $ref: "#/components/schemas/MediaItem"
 
+    CastMember:
+      type: object
+      properties:
+        name:
+          type: string
+        character:
+          type: string
+        photoUrl:
+          type: string
+          nullable: true
+
     Show:
       type: object
       properties:
@@ -899,6 +928,10 @@ components:
         backdropUrl:
           type: string
           nullable: true
+        cast:
+          type: array
+          items:
+            $ref: "#/components/schemas/CastMember"
         seasons:
           type: array
           items:

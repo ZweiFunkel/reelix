@@ -399,6 +399,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/categories/{categoryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A single category's own name/path — used to rebuild breadcrumbs after a page reload */
+        get: operations["getCategory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/categories/{categoryId}/children": {
         parameters: {
             query?: never;
@@ -682,11 +699,17 @@ export interface components {
             seasonNumber?: number;
             episodes?: components["schemas"]["MediaItem"][];
         };
+        CastMember: {
+            name?: string;
+            character?: string;
+            photoUrl?: string | null;
+        };
         Show: {
             title?: string;
             overview?: string | null;
             posterUrl?: string | null;
             backdropUrl?: string | null;
+            cast?: components["schemas"]["CastMember"][];
             seasons?: components["schemas"]["ShowSeason"][];
         };
     };
@@ -1316,6 +1339,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MediaItem"][];
+                };
+            };
+        };
+    };
+    getCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                categoryId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Category */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Category"];
                 };
             };
         };

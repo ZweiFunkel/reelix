@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path"
@@ -229,6 +230,23 @@ type categoryChildrenResponse struct {
 	Items         []mediaItemDTO `json:"items"`
 }
 
+// handleGetCategory returns a single category's own name/path — used to
+// rebuild breadcrumb labels when a browse URL is opened directly (e.g.
+// after a page reload), since the URL only carries category ids.
+func (s *Server) handleGetCategory(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "categoryId"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	cat, err := s.categories.Get(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, errors.New("category not found"))
+		return
+	}
+	writeJSON(w, http.StatusOK, toCategoryDTO(*cat))
+}
+
 func (s *Server) handleCategoryChildren(w http.ResponseWriter, r *http.Request) {
 	categoryID, err := strconv.ParseInt(chi.URLParam(r, "categoryId"), 10, 64)
 	if err != nil {
@@ -429,11 +447,18 @@ type showSeasonDTO struct {
 	Episodes     []mediaItemDTO `json:"episodes"`
 }
 
+type castMemberDTO struct {
+	Name      string  `json:"name"`
+	Character string  `json:"character,omitempty"`
+	PhotoURL  *string `json:"photoUrl"`
+}
+
 type showResponseDTO struct {
 	Title       string          `json:"title"`
 	Overview    *string         `json:"overview"`
 	PosterURL   *string         `json:"posterUrl"`
 	BackdropURL *string         `json:"backdropUrl"`
+	Cast        []castMemberDTO `json:"cast"`
 	Seasons     []showSeasonDTO `json:"seasons"`
 }
 
@@ -503,6 +528,21 @@ func (s *Server) handleGetShow(w http.ResponseWriter, r *http.Request) {
 			return *eps[i].EpisodeNumber < *eps[j].EpisodeNumber
 		})
 		resp.Seasons = append(resp.Seasons, showSeasonDTO{SeasonNumber: sn, Episodes: s.attachProgress(r.Context(), eps)})
+	}
+
+	if s.tmdb != nil && anchorEp.ShowTMDbID != 0 {
+		if cast, err := s.tmdb.GetShowCast(r.Context(), anchorEp.ShowTMDbID); err == nil {
+			resp.Cast = make([]castMemberDTO, len(cast))
+			for i, member := range cast {
+				dto := castMemberDTO{Name: member.Name, Character: member.Character}
+				if url := member.PhotoURL(); url != "" {
+					dto.PhotoURL = &url
+				}
+				resp.Cast[i] = dto
+			}
+		} else {
+			log.Printf("reelix: tmdb cast lookup for %q: %v", anchorEp.ShowTitle, err)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)

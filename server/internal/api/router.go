@@ -37,6 +37,7 @@ type Server struct {
 	transcoder     *stream.Manager
 	thumbnailsDir  string
 	uploadsDir     string
+	tmdb           *metadata.Client
 }
 
 func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir string, maxConcurrentTranscodes int) http.Handler {
@@ -49,6 +50,7 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 	sessions := db.NewSessionStore(dbConn)
 	watchStates := db.NewWatchStateStore(dbConn)
 	passwordResets := db.NewPasswordResetTokenStore(dbConn)
+	tmdb := metadata.NewClient(cfg.TMDbAPIKey)
 
 	s := &Server{
 		libraries:      libraries,
@@ -61,10 +63,11 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 		watchStates:    watchStates,
 		passwordResets: passwordResets,
 		mailer:         mail.NewSender(cfg),
-		scanner:        library.NewScanner(libraries, categories, items, channels, thumbnailsDir, metadata.NewClient(cfg.TMDbAPIKey)),
+		scanner:        library.NewScanner(libraries, categories, items, channels, thumbnailsDir, tmdb),
 		transcoder:     stream.NewManager(transcodeDir, maxConcurrentTranscodes),
 		thumbnailsDir:  thumbnailsDir,
 		uploadsDir:     cfg.UploadsDir,
+		tmdb:           tmdb,
 	}
 
 	authMW := auth.NewMiddleware(sessions, users, profiles)
@@ -125,6 +128,7 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 
 	r.Route("/api/categories", func(r chi.Router) {
 		r.Use(authMW.RequireProfile)
+		r.Get("/{categoryId}", s.handleGetCategory)
 		r.Get("/{categoryId}/children", s.handleCategoryChildren)
 	})
 

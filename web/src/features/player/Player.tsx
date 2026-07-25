@@ -188,8 +188,15 @@ export function Player({
     else containerRef.current?.requestFullscreen()
   }
 
-  const isLive = isChannel || !Number.isFinite(duration) || duration === 0
-  const remaining = Math.max(0, duration - currentTime)
+  // Prefer the server's ffprobe-derived duration over the <video>
+  // element's own, which briefly under-reports while HLS is still
+  // growing the playlist (especially right after a rescan invalidates
+  // the transcode's scratch dir) — without this, remaining/seek-bar/
+  // "Ends" all flash a much-too-short duration for a second or two
+  // before catching up to the real value.
+  const displayDuration = (!isChannel && item?.durationSeconds) || duration
+  const isLive = isChannel || !Number.isFinite(displayDuration) || displayDuration === 0
+  const remaining = Math.max(0, displayDuration - currentTime)
 
   return (
     <div
@@ -262,14 +269,14 @@ export function Player({
             <input
               type="range"
               min={0}
-              max={duration || 0}
+              max={displayDuration || 0}
               step={0.1}
               value={currentTime}
               onChange={(e) => seekTo(Number(e.target.value))}
               className="flex-1 accent-red-500 cursor-pointer"
             />
             <span className="w-40 text-neutral-400 tabular-nums">
-              {formatDuration(duration)} · Ends {formatClockTime(new Date(Date.now() + remaining * 1000))}
+              {formatDuration(displayDuration)} · Ends {formatClockTime(new Date(Date.now() + remaining * 1000))}
             </span>
           </div>
         )}
