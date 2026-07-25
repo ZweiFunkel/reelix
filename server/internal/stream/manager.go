@@ -70,9 +70,24 @@ func NewManager(scratchDir string, maxConcurrent int) *Manager {
 	return m
 }
 
+// browserCompatibleVideoCodecs are codecs a browser's <video> element can
+// decode directly — for these, ffmpeg only needs to remux into HLS
+// segments (-c:v copy), not re-encode. Re-encoding H.264 into H.264 was
+// the actual cause of playback stalling partway through a file: a full
+// x264 encode at "veryfast" is still far slower than realtime on modest
+// hardware, so the player runs out of buffered segments and stalls
+// waiting for ffmpeg to catch up — which looks like "the video just
+// stops" a few minutes in, with no error anywhere. Stream-copying the
+// (already-compatible) video is close to free, so this is the common
+// case for typical h264-in-mkv scene releases.
+var browserCompatibleVideoCodecs = map[string]bool{"h264": true, "vp8": true, "vp9": true, "av1": true}
+
 // StartSession spawns ffmpeg transcoding sourcePath to HLS if a session
-// with this ID isn't already running, otherwise returns the existing one.
-func (m *Manager) StartSession(sessionID, sourcePath string) (*Session, error) {
+// with this ID isn't already running, otherwise returns the existing
+// one. videoCodec (ffprobe's codec name, e.g. "h264") decides whether
+// the video stream is copied as-is or re-encoded; audio is always
+// transcoded to AAC since that's cheap regardless of the source codec.
+func (m *Manager) StartSession(sessionID, sourcePath, videoCodec string) (*Session, error) {
 	m.mu.Lock()
 	if existing, ok := m.sessions[sessionID]; ok {
 		existing.lastAccessed = time.Now()
@@ -92,6 +107,11 @@ func (m *Manager) StartSession(sessionID, sourcePath string) (*Session, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	playlistPath := filepath.Join(outputDir, "playlist.m3u8")
+	videoArgs := []string{"-c:v", "libx264", "-preset", "veryfast"}
+	if browserCompatibleVideoCodecs[videoCodec] {
+		videoArgs = []string{"-c:v", "copy"}
+	}
+
 	// hls_list_size 0 keeps every segment in the playlist and on disk —
 	// this is on-demand VOD transcoding, not a live stream, so segments
 	// must stick around for as long as the viewer might still seek back
@@ -99,12 +119,13 @@ func (m *Manager) StartSession(sessionID, sourcePath string) (*Session, error) {
 	// setting: it silently deleted each segment once ffmpeg's default
 	// 5-segment/20s rolling window passed it, which is why playback used
 	// to cut out after ~20s regardless of the file's real length.)
-	cmd := exec.CommandContext(ctx, "ffmpeg",
-		"-y", "-i", sourcePath,
-		"-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac",
+	args := append([]string{"-y", "-i", sourcePath}, videoArgs...)
+	args = append(args,
+		"-c:a", "aac",
 		"-f", "hls", "-hls_time", "4", "-hls_list_size", "0", "-hls_flags", "append_list",
 		playlistPath,
 	)
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	setProcAttrs(cmd)
 	stderr := newTailWriter(8 << 10) // last 8KB — plenty for ffmpeg's actual error
 	cmd.Stderr = stderr

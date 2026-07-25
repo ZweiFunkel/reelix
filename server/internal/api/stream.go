@@ -83,7 +83,15 @@ func (s *Server) handleThumbnail(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTranscodeStream(w http.ResponseWriter, r *http.Request, item *db.MediaItem, absPath string) {
 	sessionID := fmt.Sprintf("item-%d", item.ID)
 
-	sess, err := s.transcoder.StartSession(sessionID, absPath)
+	// CodecInfo is "<name> <width>x<height>" (see probe() in the library
+	// package) — just need the name to decide whether the video stream
+	// can be copied as-is instead of re-encoded.
+	var videoCodec string
+	if item.CodecInfo != nil {
+		videoCodec, _, _ = strings.Cut(*item.CodecInfo, " ")
+	}
+
+	sess, err := s.transcoder.StartSession(sessionID, absPath, videoCodec)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, err)
 		return
