@@ -90,6 +90,58 @@ export interface paths {
         patch: operations["updateAdminUserRole"];
         trace?: never;
     };
+    "/api/admin/users/{userId}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Admin sets a user's password directly, bypassing the email flow (signs out that user's sessions) */
+        post: operations["setAdminUserPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an account (cannot delete your own) */
+        delete: operations["deleteAdminUser"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/settings/smtp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current outgoing-mail configuration (password never returned) */
+        get: operations["getSMTPSettings"];
+        /** Configure outgoing mail (any standard SMTP provider). Leave password blank to keep the existing one. */
+        put: operations["updateSMTPSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setup/status": {
         parameters: {
             query?: never;
@@ -649,6 +701,21 @@ export interface components {
             email?: string | null;
             emailVerified?: boolean;
         };
+        SMTPSettings: {
+            host?: string;
+            port?: number;
+            username?: string;
+            fromAddress?: string;
+            configured?: boolean;
+        };
+        SMTPSettingsUpdate: {
+            host: string;
+            port?: number;
+            username?: string;
+            /** @description Leave blank to keep the existing password */
+            password?: string;
+            fromAddress?: string;
+        };
         Profile: {
             id?: number;
             displayName?: string;
@@ -858,6 +925,94 @@ export interface operations {
         };
         responses: {
             /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    setAdminUserPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    newPassword: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteAdminUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getSMTPSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SMTP settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SMTPSettings"];
+                };
+            };
+        };
+    };
+    updateSMTPSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SMTPSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Saved */
             200: {
                 headers: {
                     [name: string]: unknown;

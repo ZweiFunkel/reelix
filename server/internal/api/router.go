@@ -32,6 +32,7 @@ type Server struct {
 	sessions       *db.SessionStore
 	watchStates    *db.WatchStateStore
 	passwordResets *db.PasswordResetTokenStore
+	smtpSettings   *db.SMTPSettingsStore
 	mailer         *mail.Sender
 	scanner        *library.Scanner
 	transcoder     *stream.Manager
@@ -50,6 +51,7 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 	sessions := db.NewSessionStore(dbConn)
 	watchStates := db.NewWatchStateStore(dbConn)
 	passwordResets := db.NewPasswordResetTokenStore(dbConn)
+	smtpSettings := db.NewSMTPSettingsStore(dbConn)
 	tmdb := metadata.NewClient(cfg.TMDbAPIKey)
 
 	s := &Server{
@@ -62,7 +64,8 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 		sessions:       sessions,
 		watchStates:    watchStates,
 		passwordResets: passwordResets,
-		mailer:         mail.NewSender(cfg),
+		smtpSettings:   smtpSettings,
+		mailer:         mail.NewSender(cfg, smtpSettings),
 		scanner:        library.NewScanner(libraries, categories, items, channels, thumbnailsDir, tmdb),
 		transcoder:     stream.NewManager(transcodeDir, maxConcurrentTranscodes),
 		thumbnailsDir:  thumbnailsDir,
@@ -90,6 +93,14 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 		r.Get("/", s.handleAdminListUsers)
 		r.Post("/", s.handleAdminCreateUser)
 		r.Patch("/{userId}/role", s.handleAdminUpdateUserRole)
+		r.Post("/{userId}/password", s.handleAdminSetUserPassword)
+		r.Delete("/{userId}", s.handleAdminDeleteUser)
+	})
+
+	r.Route("/api/admin/settings/smtp", func(r chi.Router) {
+		r.Use(authMW.RequireAdmin)
+		r.Get("/", s.handleGetSMTPSettings)
+		r.Put("/", s.handleUpdateSMTPSettings)
 	})
 
 	r.Route("/api/setup", func(r chi.Router) {

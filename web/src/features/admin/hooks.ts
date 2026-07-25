@@ -33,3 +33,35 @@ export function useUpdateAdminUserRole() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
   })
 }
+
+export function useSetAdminUserPassword() {
+  return useMutation({
+    mutationFn: ({ userId, newPassword }: { userId: number; newPassword: string }) =>
+      api.POST('/api/admin/users/{userId}/password', { params: { path: { userId } }, body: { newPassword } }).then(unwrap),
+  })
+}
+
+export function useDeleteAdminUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: number) =>
+      api.DELETE('/api/admin/users/{userId}', { params: { path: { userId } } }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
+  })
+}
+
+export function useSMTPSettings() {
+  return useQuery({
+    queryKey: ['admin-smtp-settings'],
+    queryFn: () => api.GET('/api/admin/settings/smtp').then(unwrap),
+  })
+}
+
+export function useUpdateSMTPSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { host: string; port: number; username: string; password: string; fromAddress: string }) =>
+      api.PUT('/api/admin/settings/smtp', { body }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-smtp-settings'] }),
+  })
+}

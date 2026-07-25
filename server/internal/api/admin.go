@@ -194,3 +194,117 @@ func (s *Server) handleAdminUpdateUserRole(w http.ResponseWriter, r *http.Reques
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
+
+type setUserPasswordRequest struct {
+	NewPassword string `json:"newPassword"`
+}
+
+// handleAdminSetUserPassword lets an admin set a user's password
+// directly — the CLI reset-password subcommand and the emailed-code
+// flow both existed already, but neither helps when the admin hasn't
+// set up SMTP and would rather just hand someone a password themselves.
+// All of that user's sessions are signed out, same as the emailed reset.
+func (s *Server) handleAdminSetUserPassword(w http.ResponseWriter, r *http.Request) {
+	userID, err := strconv.ParseInt(chi.URLParam(r, "userId"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var req setUserPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		writeError(w, http.StatusBadRequest, errors.New("password must be 8+ chars"))
+		return
+	}
+
+	hash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if err := s.users.UpdatePassword(r.Context(), userID, hash); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	_ = s.sessions.DeleteAllForUser(r.Context(), userID)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handleAdminDeleteUser removes an account (and, via ON DELETE CASCADE,
+// its profiles/sessions). An admin can't delete their own account —
+// same "don't lock yourself out" guard as demoting/role changes.
+func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
+	userID, err := strconv.ParseInt(chi.URLParam(r, "userId"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if current := auth.UserFromContext(r.Context()); current != nil && current.ID == userID {
+		writeError(w, http.StatusBadRequest, errors.New("cannot delete your own account"))
+		return
+	}
+	if err := s.users.Delete(r.Context(), userID); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type smtpSettingsDTO struct {
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	FromAddress string `json:"fromAddress"`
+	Configured  bool   `json:"configured"`
+}
+
+// handleGetSMTPSettings never returns the stored password — the admin
+// UI shows everything else and a blank password field; leaving it blank
+// on save keeps the existing password (see SMTPSettingsStore.Upsert).
+func (s *Server) handleGetSMTPSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.smtpSettings.Get(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if settings == nil {
+		writeJSON(w, http.StatusOK, smtpSettingsDTO{})
+		return
+	}
+	writeJSON(w, http.StatusOK, smtpSettingsDTO{
+		Host: settings.Host, Port: settings.Port, Username: settings.Username,
+		FromAddress: settings.FromAddress, Configured: settings.Host != "",
+	})
+}
+
+type updateSMTPSettingsRequest struct {
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	FromAddress string `json:"fromAddress"`
+}
+
+// handleUpdateSMTPSettings lets an admin configure outgoing mail (any
+// standard SMTP provider — Gmail, GMX, a transactional service, ...)
+// from the browser instead of editing docker-compose/env vars.
+func (s *Server) handleUpdateSMTPSettings(w http.ResponseWriter, r *http.Request) {
+	var req updateSMTPSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.Host != "" && req.Port == 0 {
+		req.Port = 587
+	}
+	if err := s.smtpSettings.Upsert(r.Context(), db.SMTPSettings{
+		Host: req.Host, Port: req.Port, Username: req.Username, Password: req.Password, FromAddress: req.FromAddress,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}

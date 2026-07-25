@@ -92,6 +92,12 @@ func (s *UserStore) UpdateRole(ctx context.Context, id int64, role string) error
 	return err
 }
 
+// Delete removes an account; profiles/sessions cascade via foreign keys.
+func (s *UserStore) Delete(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM user WHERE id = ?`, id)
+	return err
+}
+
 const selectUserSQL = `SELECT id, username, password_hash, role, email, email_verified, created_at FROM user`
 
 func scanUser(row rowScanner) (*User, error) {

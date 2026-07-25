@@ -112,6 +112,68 @@ paths:
         "200":
           description: Updated
 
+  /api/admin/users/{userId}/password:
+    post:
+      operationId: setAdminUserPassword
+      summary: Admin sets a user's password directly, bypassing the email flow (signs out that user's sessions)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newPassword]
+              properties:
+                newPassword:
+                  type: string
+      responses:
+        "200":
+          description: Updated
+
+  /api/admin/users/{userId}:
+    delete:
+      operationId: deleteAdminUser
+      summary: Delete an account (cannot delete your own)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /api/admin/settings/smtp:
+    get:
+      operationId: getSMTPSettings
+      summary: Current outgoing-mail configuration (password never returned)
+      responses:
+        "200":
+          description: SMTP settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SMTPSettings"
+    put:
+      operationId: updateSMTPSettings
+      summary: Configure outgoing mail (any standard SMTP provider). Leave password blank to keep the existing one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SMTPSettingsUpdate"
+      responses:
+        "200":
+          description: Saved
+
   /api/setup/status:
     get:
       operationId: getSetupStatus
@@ -788,6 +850,36 @@ components:
           nullable: true
         emailVerified:
           type: boolean
+
+    SMTPSettings:
+      type: object
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        username:
+          type: string
+        fromAddress:
+          type: string
+        configured:
+          type: boolean
+
+    SMTPSettingsUpdate:
+      type: object
+      required: [host]
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        username:
+          type: string
+        password:
+          type: string
+          description: Leave blank to keep the existing password
+        fromAddress:
+          type: string
 
     Profile:
       type: object

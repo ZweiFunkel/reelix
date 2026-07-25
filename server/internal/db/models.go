@@ -97,6 +97,17 @@ type Session struct {
 	LastSeenAt *time.Time
 }
 
+// SMTPSettings is the admin-configurable outgoing-mail config — set via
+// the admin UI, taking precedence over the REELIX_SMTP_* env vars when
+// present (see mail.Sender). Host empty means "not configured".
+type SMTPSettings struct {
+	Host        string
+	Port        int
+	Username    string
+	Password    string
+	FromAddress string
+}
+
 type WatchState struct {
 	ProfileID        int64
 	PlayableItemID   int64

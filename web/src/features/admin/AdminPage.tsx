@@ -1,5 +1,15 @@
-import { useState } from 'react'
-import { useAdminSessions, useAdminUsers, useCreateAdminUser, useUpdateAdminUserRole } from './hooks'
+import { useEffect, useState } from 'react'
+import {
+  useAdminSessions,
+  useAdminUsers,
+  useCreateAdminUser,
+  useUpdateAdminUserRole,
+  useSetAdminUserPassword,
+  useDeleteAdminUser,
+  useSMTPSettings,
+  useUpdateSMTPSettings,
+} from './hooks'
+import { useMe } from '../auth/hooks'
 
 function timeAgo(iso: string | null | undefined) {
   if (!iso) return 'never'
@@ -78,9 +88,53 @@ function CreateUserForm() {
   )
 }
 
+function SetPasswordButton({ userId }: { userId: number }) {
+  const [open, setOpen] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const setPassword = useSetAdminUserPassword()
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700">
+        Set password
+      </button>
+    )
+  }
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await setPassword.mutateAsync({ userId, newPassword })
+    setOpen(false)
+    setNewPassword('')
+  }
+
+  return (
+    <form onSubmit={submit} className="flex items-center gap-1.5 justify-end">
+      <input
+        required
+        autoFocus
+        type="password"
+        minLength={8}
+        placeholder="New password"
+        value={newPassword}
+        onChange={(e) => setNewPassword(e.target.value)}
+        className="bg-neutral-800 rounded px-2 py-1 text-xs text-neutral-100 outline-none focus:ring-1 focus:ring-red-500 w-32"
+      />
+      <button type="submit" disabled={setPassword.isPending} className="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-500 disabled:opacity-50">
+        Save
+      </button>
+      <button type="button" onClick={() => setOpen(false)} className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700">
+        Cancel
+      </button>
+    </form>
+  )
+}
+
 function UsersTable() {
   const { data: users, isLoading } = useAdminUsers()
+  const { data: me } = useMe()
   const updateRole = useUpdateAdminUserRole()
+  const deleteUser = useDeleteAdminUser()
 
   return (
     <div className="flex flex-col gap-3">
@@ -99,28 +153,143 @@ function UsersTable() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800">
-              {users.map((u) => (
-                <tr key={u.id} className="hover:bg-neutral-900/40">
-                  <td className="px-4 py-3 font-medium text-neutral-200">{u.username}</td>
-                  <td className="px-4 py-3 text-neutral-400">{u.role}</td>
-                  <td className="px-4 py-3 text-neutral-500">{u.email ?? '—'}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => updateRole.mutate({ userId: u.id!, role: u.role === 'admin' ? 'user' : 'admin' })}
-                      disabled={updateRole.isPending}
-                      className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-                    >
-                      {u.role === 'admin' ? 'Demote to user' : 'Promote to admin'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {users.map((u) => {
+                const isSelf = u.id === me?.user?.id
+                return (
+                  <tr key={u.id} className="hover:bg-neutral-900/40">
+                    <td className="px-4 py-3 font-medium text-neutral-200">{u.username}</td>
+                    <td className="px-4 py-3 text-neutral-400">{u.role}</td>
+                    <td className="px-4 py-3 text-neutral-500">{u.email ?? '—'}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => updateRole.mutate({ userId: u.id!, role: u.role === 'admin' ? 'user' : 'admin' })}
+                          disabled={updateRole.isPending || isSelf}
+                          className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+                        >
+                          {u.role === 'admin' ? 'Demote' : 'Promote'}
+                        </button>
+                        <SetPasswordButton userId={u.id!} />
+                        <button
+                          onClick={() => {
+                            if (isSelf) return
+                            if (window.confirm(`Delete account "${u.username}"? This cannot be undone.`)) {
+                              deleteUser.mutate(u.id!)
+                            }
+                          }}
+                          disabled={deleteUser.isPending || isSelf}
+                          title={isSelf ? "Can't delete your own account" : undefined}
+                          className="text-xs px-2 py-1 rounded bg-red-950 text-red-400 hover:bg-red-900 disabled:opacity-30"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
       )}
       {updateRole.isError && <p className="text-sm text-red-400">{(updateRole.error as Error).message}</p>}
+      {deleteUser.isError && <p className="text-sm text-red-400">{(deleteUser.error as Error).message}</p>}
     </div>
+  )
+}
+
+function SMTPSettingsForm() {
+  const { data: settings, isLoading } = useSMTPSettings()
+  const update = useUpdateSMTPSettings()
+  const [host, setHost] = useState('')
+  const [port, setPort] = useState(587)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [fromAddress, setFromAddress] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    if (!settings) return
+    setHost(settings.host ?? '')
+    setPort(settings.port || 587)
+    setUsername(settings.username ?? '')
+    setFromAddress(settings.fromAddress ?? '')
+  }, [settings])
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaved(false)
+    await update.mutateAsync({ host, port, username, password, fromAddress })
+    setPassword('')
+    setSaved(true)
+  }
+
+  if (isLoading) return <p className="text-neutral-500 text-sm">Loading…</p>
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-3 p-4 rounded-lg border border-neutral-800 bg-neutral-900/40 max-w-xl">
+      <p className="text-xs text-neutral-500">
+        Works with any standard SMTP provider (Gmail, GMX, …). {settings?.configured ? 'Currently configured.' : 'Not configured — verification/reset codes are logged to the server console instead.'}
+      </p>
+      <div className="flex gap-2">
+        <label className="flex flex-col gap-1 text-xs text-neutral-400 flex-1">
+          SMTP host
+          <input
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+            placeholder="smtp.gmail.com"
+            className="bg-neutral-800 rounded px-3 py-2 text-sm text-neutral-100 outline-none focus:ring-1 focus:ring-red-500"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-neutral-400 w-24">
+          Port
+          <input
+            type="number"
+            value={port}
+            onChange={(e) => setPort(Number(e.target.value))}
+            className="bg-neutral-800 rounded px-3 py-2 text-sm text-neutral-100 outline-none focus:ring-1 focus:ring-red-500"
+          />
+        </label>
+      </div>
+      <label className="flex flex-col gap-1 text-xs text-neutral-400">
+        Username
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          className="bg-neutral-800 rounded px-3 py-2 text-sm text-neutral-100 outline-none focus:ring-1 focus:ring-red-500"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-neutral-400">
+        Password
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder={settings?.configured ? '(unchanged — leave blank to keep)' : ''}
+          className="bg-neutral-800 rounded px-3 py-2 text-sm text-neutral-100 outline-none focus:ring-1 focus:ring-red-500"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-neutral-400">
+        From address
+        <input
+          value={fromAddress}
+          onChange={(e) => setFromAddress(e.target.value)}
+          placeholder="reelix@example.com"
+          className="bg-neutral-800 rounded px-3 py-2 text-sm text-neutral-100 outline-none focus:ring-1 focus:ring-red-500"
+        />
+      </label>
+      <div className="flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={update.isPending}
+          className="px-4 py-2 rounded bg-red-600 hover:bg-red-500 disabled:opacity-50 font-medium text-sm w-fit"
+        >
+          {update.isPending ? 'Saving…' : 'Save'}
+        </button>
+        {saved && <span className="text-sm text-emerald-400">Saved.</span>}
+        {update.isError && <span className="text-sm text-red-400">{(update.error as Error).message}</span>}
+      </div>
+    </form>
   )
 }
 
@@ -134,6 +303,11 @@ export function AdminPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">Accounts</h2>
         <UsersTable />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium">Outgoing mail (SMTP)</h2>
+        <SMTPSettingsForm />
       </section>
 
       <section className="flex flex-col gap-3">

@@ -392,7 +392,7 @@ func (s *Server) sendCode(ctx context.Context, userID int64, email, purpose, sub
 	if err := s.passwordResets.Create(ctx, userID, code, purpose, time.Now().Add(resetCodeTTL)); err != nil {
 		return
 	}
-	_ = s.mailer.Send(email, subject, fmt.Sprintf(bodyFmt, code))
+	_ = s.mailer.Send(ctx, email, subject, fmt.Sprintf(bodyFmt, code))
 }
 
 type resetPasswordRequest struct {
