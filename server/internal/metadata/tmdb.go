@@ -60,6 +60,7 @@ type Episode struct {
 	Kind             string  `json:"kind"`
 	ShowTMDbID       int64   `json:"showTmdbId"`
 	ShowTitle        string  `json:"showTitle"`
+	ShowOverview     string  `json:"showOverview,omitempty"`
 	SeasonNumber     int     `json:"seasonNumber"`
 	EpisodeNumber    int     `json:"episodeNumber"`
 	Title            string  `json:"title"`
@@ -171,6 +172,7 @@ type tvSearchResponse struct {
 	Results []struct {
 		ID           int64  `json:"id"`
 		Name         string `json:"name"`
+		Overview     string `json:"overview"`
 		PosterPath   string `json:"poster_path"`
 		BackdropPath string `json:"backdrop_path"`
 	} `json:"results"`
@@ -179,6 +181,7 @@ type tvSearchResponse struct {
 type tvShow struct {
 	ID           int64
 	Name         string
+	Overview     string
 	PosterPath   string
 	BackdropPath string
 }
@@ -211,7 +214,7 @@ func (c *Client) searchTVShow(ctx context.Context, title string) (*tvShow, error
 		return nil, nil
 	}
 	best := parsed.Results[0]
-	return &tvShow{ID: best.ID, Name: best.Name, PosterPath: best.PosterPath, BackdropPath: best.BackdropPath}, nil
+	return &tvShow{ID: best.ID, Name: best.Name, Overview: best.Overview, PosterPath: best.PosterPath, BackdropPath: best.BackdropPath}, nil
 }
 
 type episodeResponse struct {
@@ -259,7 +262,7 @@ func (c *Client) SearchEpisode(ctx context.Context, showTitle string, season, ep
 		return nil, err
 	}
 	return &Episode{
-		Kind: KindEpisode, ShowTMDbID: show.ID, ShowTitle: show.Name,
+		Kind: KindEpisode, ShowTMDbID: show.ID, ShowTitle: show.Name, ShowOverview: show.Overview,
 		SeasonNumber: season, EpisodeNumber: episode, Title: parsed.Name, Overview: parsed.Overview,
 		AirDate: parsed.AirDate, VoteAverage: parsed.VoteAverage, StillPath: parsed.StillPath,
 		ShowPosterPath: show.PosterPath, ShowBackdropPath: show.BackdropPath,

@@ -350,6 +350,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/Library"
 
+  /api/libraries/{libraryId}:
+    delete:
+      operationId: deleteLibrary
+      summary: Unregister a library (never touches files on disk — admin only)
+      parameters:
+        - $ref: "#/components/parameters/LibraryId"
+      responses:
+        "204":
+          description: Deleted
+
   /api/libraries/{libraryId}/scan:
     post:
       operationId: triggerLibraryScan
@@ -460,6 +470,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MediaItem"
+    delete:
+      operationId: deleteMediaItem
+      summary: Permanently delete this item's row AND its underlying file (admin only, irreversible)
+      parameters:
+        - name: mediaItemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
 
   /api/media-items/{mediaItemId}/stream:
     get:
@@ -508,6 +530,26 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/MediaItem"
+
+  /api/media-items/{mediaItemId}/show:
+    get:
+      operationId: getShow
+      summary: Every episode of the show this item belongs to, across the whole library, grouped by season
+      parameters:
+        - name: mediaItemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Show detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Show"
+        "400":
+          description: This item isn't part of a TV show
 
   /api/media-items/{mediaItemId}/progress:
     post:
@@ -649,16 +691,18 @@ components:
     MediaItem:
       description: >
         A playable browse-listing entry — a local video/photo
-        (itemType=media_item) or an M3U channel (itemType=channel), sharing
-        one shape so the browse API and client don't need to special-case
-        the source.
+        (itemType=media_item), an M3U channel (itemType=channel), or a
+        synthetic grouped tile standing in for a whole TV show
+        (itemType=show, id is one representative episode's id — see
+        GET /api/media-items/{id}/show) — sharing one shape so the
+        browse API and client don't need to special-case the source.
       type: object
       properties:
         id:
           type: integer
         itemType:
           type: string
-          enum: [media_item, channel]
+          enum: [media_item, channel, show]
         title:
           type: string
         filePath:
@@ -830,3 +874,32 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MediaItem"
+
+    ShowSeason:
+      type: object
+      properties:
+        seasonNumber:
+          type: integer
+        episodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaItem"
+
+    Show:
+      type: object
+      properties:
+        title:
+          type: string
+        overview:
+          type: string
+          nullable: true
+        posterUrl:
+          type: string
+          nullable: true
+        backdropUrl:
+          type: string
+          nullable: true
+        seasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShowSeason"

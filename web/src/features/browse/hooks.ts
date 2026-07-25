@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, unwrap } from '../../lib/api'
 
 export function useLibraryRoot(libraryId: number | null) {
@@ -53,5 +53,27 @@ export function useChannel(channelId: number | null) {
     queryKey: ['channel', channelId],
     enabled: channelId != null,
     queryFn: () => api.GET('/api/channels/{channelId}', { params: { path: { channelId: channelId! } } }).then(unwrap),
+  })
+}
+
+export function useShow(anchorMediaItemId: number | null) {
+  return useQuery({
+    queryKey: ['show', anchorMediaItemId],
+    enabled: anchorMediaItemId != null,
+    queryFn: () => api.GET('/api/media-items/{mediaItemId}/show', { params: { path: { mediaItemId: anchorMediaItemId! } } }).then(unwrap),
+  })
+}
+
+export function useDeleteMediaItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (mediaItemId: number) =>
+      api.DELETE('/api/media-items/{mediaItemId}', { params: { path: { mediaItemId } } }).then(unwrap),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['library-root'] })
+      qc.invalidateQueries({ queryKey: ['category-children'] })
+      qc.invalidateQueries({ queryKey: ['library-recent'] })
+      qc.invalidateQueries({ queryKey: ['continue-watching'] })
+    },
   })
 }

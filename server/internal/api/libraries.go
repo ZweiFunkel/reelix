@@ -106,6 +106,27 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toLibraryDTO(*lib))
 }
 
+// handleDeleteLibrary unregisters a library and (via ON DELETE CASCADE)
+// its categories/media items/channels. Never touches files on disk —
+// rootPath is very often a real host media folder the admin still wants
+// to keep, just not tracked by Reelix anymore.
+func (s *Server) handleDeleteLibrary(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "libraryId"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if _, err := s.libraries.Get(r.Context(), id); err != nil {
+		writeError(w, http.StatusNotFound, errors.New("library not found"))
+		return
+	}
+	if err := s.libraries.Delete(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleUploadToLibrary lets an admin add files straight into a library
 // from the web UI, then rescans it. Requires the library's root to
 // actually be writable — a host media mount following the example

@@ -39,6 +39,15 @@ export function useUploadToLibrary() {
   })
 }
 
+export function useDeleteLibrary() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (libraryId: number) =>
+      api.DELETE('/api/libraries/{libraryId}', { params: { path: { libraryId } } }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['libraries'] }),
+  })
+}
+
 export function useTriggerScan() {
   const qc = useQueryClient()
   return useMutation({

@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -118,6 +121,92 @@ func toChannelDTO(c db.Channel) mediaItemDTO {
 	return mediaItemDTO{ID: c.ID, ItemType: "channel", Title: c.Name, MediaType: "channel"}
 }
 
+// parseEpisodeMetadata returns the parsed Episode and true only for rows
+// whose metadata is actually kind=episode — every other case (movie,
+// unrecognized, parse failure) returns ok=false without erroring, since
+// "not an episode" is the overwhelmingly common, entirely normal case.
+func parseEpisodeMetadata(raw string) (metadata.Episode, bool) {
+	var kind struct {
+		Kind string `json:"kind"`
+	}
+	if json.Unmarshal([]byte(raw), &kind) != nil || kind.Kind != metadata.KindEpisode {
+		return metadata.Episode{}, false
+	}
+	var ep metadata.Episode
+	if json.Unmarshal([]byte(raw), &ep) != nil || ep.ShowTitle == "" {
+		return metadata.Episode{}, false
+	}
+	return ep, true
+}
+
+func lessEpisode(a, b metadata.Episode) bool {
+	if a.SeasonNumber != b.SeasonNumber {
+		return a.SeasonNumber < b.SeasonNumber
+	}
+	return a.EpisodeNumber < b.EpisodeNumber
+}
+
+// toShowTileDTO builds the single grouped tile a show's episodes collapse
+// into in a folder listing — id is one representative episode's real
+// media_item id, used purely as an anchor for GET .../show to look up
+// "every episode with this show's title" (see handleGetShow).
+func toShowTileDTO(anchorID int64, rep metadata.Episode) mediaItemDTO {
+	dto := mediaItemDTO{ID: anchorID, ItemType: "show", Title: rep.ShowTitle, MediaType: "video", ShowTitle: &rep.ShowTitle}
+	if url := rep.PosterURL(); url != "" {
+		dto.PosterURL = &url
+	}
+	if url := rep.BackdropURL(); url != "" {
+		dto.BackdropURL = &url
+	}
+	overview := rep.ShowOverview
+	if overview == "" {
+		overview = rep.Overview
+	}
+	if overview != "" {
+		dto.Overview = &overview
+	}
+	return dto
+}
+
+// groupItemsIntoShowTiles collapses every item recognized as a TV
+// episode into one tile per distinct show title, so a folder full of
+// individual episode files browses like Jellyfin/Netflix — one show,
+// not N episode tiles. Movies and unrecognized video files pass through
+// unchanged. Photos are handled by the caller, same as before.
+func groupItemsIntoShowTiles(items []db.MediaItem) []mediaItemDTO {
+	type group struct {
+		anchorID int64
+		rep      metadata.Episode
+	}
+	groups := map[string]*group{}
+	var order []string
+	out := make([]mediaItemDTO, 0, len(items))
+
+	for _, m := range items {
+		ep, ok := parseEpisodeMetadata(m.Metadata)
+		if !ok {
+			out = append(out, toMediaItemDTO(m))
+			continue
+		}
+		g, exists := groups[ep.ShowTitle]
+		if !exists {
+			g = &group{anchorID: m.ID, rep: ep}
+			groups[ep.ShowTitle] = g
+			order = append(order, ep.ShowTitle)
+			continue
+		}
+		if lessEpisode(ep, g.rep) {
+			g.anchorID, g.rep = m.ID, ep
+		}
+	}
+
+	for _, showTitle := range order {
+		g := groups[showTitle]
+		out = append(out, toShowTileDTO(g.anchorID, g.rep))
+	}
+	return out
+}
+
 // attachProgress fills in each item's watch progress for the session's
 // active profile. One query per item is acceptable at the scale a single
 // folder listing reaches; revisit with a batched IN-query if that changes.
@@ -213,13 +302,10 @@ func (s *Server) handleLibraryRoot(w http.ResponseWriter, r *http.Request) {
 func toChildrenResponse(subcats []db.Category, items []db.MediaItem, channels []db.Channel) categoryChildrenResponse {
 	resp := categoryChildrenResponse{
 		Subcategories: make([]categoryDTO, len(subcats)),
-		Items:         make([]mediaItemDTO, 0, len(items)+len(channels)),
+		Items:         groupItemsIntoShowTiles(items),
 	}
 	for i, c := range subcats {
 		resp.Subcategories[i] = toCategoryDTO(c)
-	}
-	for _, m := range items {
-		resp.Items = append(resp.Items, toMediaItemDTO(m))
 	}
 	for _, c := range channels {
 		resp.Items = append(resp.Items, toChannelDTO(c))
@@ -336,4 +422,124 @@ func (s *Server) handleGetMediaItem(w http.ResponseWriter, r *http.Request) {
 
 	dtos := s.attachProgress(r.Context(), []mediaItemDTO{toMediaItemDTO(*item)})
 	writeJSON(w, http.StatusOK, dtos[0])
+}
+
+type showSeasonDTO struct {
+	SeasonNumber int            `json:"seasonNumber"`
+	Episodes     []mediaItemDTO `json:"episodes"`
+}
+
+type showResponseDTO struct {
+	Title       string          `json:"title"`
+	Overview    *string         `json:"overview"`
+	PosterURL   *string         `json:"posterUrl"`
+	BackdropURL *string         `json:"backdropUrl"`
+	Seasons     []showSeasonDTO `json:"seasons"`
+}
+
+// handleGetShow takes any one episode's id (typically a show tile's
+// anchor id from groupItemsIntoShowTiles) and returns every episode of
+// that show across the whole library — not just its folder, since a
+// show's seasons are often split across subfolders — grouped by season.
+func (s *Server) handleGetShow(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "mediaItemId"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	anchor, err := s.items.Get(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, errors.New("media item not found"))
+		return
+	}
+	anchorEp, ok := parseEpisodeMetadata(anchor.Metadata)
+	if !ok {
+		writeError(w, http.StatusBadRequest, errors.New("this item is not part of a TV show"))
+		return
+	}
+
+	all, err := s.items.ListByLibrary(r.Context(), anchor.LibraryID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	bySeason := map[int][]mediaItemDTO{}
+	var seasonNumbers []int
+	resp := showResponseDTO{Title: anchorEp.ShowTitle}
+	haveShowInfo := false
+
+	for _, m := range all {
+		ep, ok := parseEpisodeMetadata(m.Metadata)
+		if !ok || ep.ShowTitle != anchorEp.ShowTitle {
+			continue
+		}
+		if !haveShowInfo {
+			if url := ep.PosterURL(); url != "" {
+				resp.PosterURL = &url
+			}
+			if url := ep.BackdropURL(); url != "" {
+				resp.BackdropURL = &url
+			}
+			overview := ep.ShowOverview
+			if overview != "" {
+				resp.Overview = &overview
+				haveShowInfo = true
+			}
+		}
+		if _, seen := bySeason[ep.SeasonNumber]; !seen {
+			seasonNumbers = append(seasonNumbers, ep.SeasonNumber)
+		}
+		bySeason[ep.SeasonNumber] = append(bySeason[ep.SeasonNumber], toMediaItemDTO(m))
+	}
+
+	sort.Ints(seasonNumbers)
+	for _, sn := range seasonNumbers {
+		eps := bySeason[sn]
+		sort.SliceStable(eps, func(i, j int) bool {
+			if eps[i].EpisodeNumber == nil || eps[j].EpisodeNumber == nil {
+				return false
+			}
+			return *eps[i].EpisodeNumber < *eps[j].EpisodeNumber
+		})
+		resp.Seasons = append(resp.Seasons, showSeasonDTO{SeasonNumber: sn, Episodes: s.attachProgress(r.Context(), eps)})
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleDeleteMediaItem permanently deletes a media item's row AND its
+// underlying file — unlike deleting a library, "delete this episode" is
+// a genuinely destructive per-file action, matching what an admin means
+// by "remove this content" (a plain DB-only delete would just have the
+// file reappear on the next scan).
+func (s *Server) handleDeleteMediaItem(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "mediaItemId"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	item, err := s.items.Get(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, errors.New("media item not found"))
+		return
+	}
+	lib, err := s.libraries.Get(r.Context(), item.LibraryID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, errors.New("library not found"))
+		return
+	}
+
+	absPath := filepath.Join(lib.RootPath, filepath.FromSlash(item.FilePath))
+	// A file already missing on disk (removed outside Reelix) shouldn't
+	// block cleaning up its now-stale database row.
+	if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("delete file: %w", err))
+		return
+	}
+	if err := s.items.Delete(r.Context(), item.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -15,7 +15,7 @@ function PhotoTile({ item, onOpen }: { item: MediaItem; onOpen: () => void }) {
   return (
     <button
       onClick={onOpen}
-      className="group aspect-[2/3] rounded-md bg-neutral-800 hover:ring-2 hover:ring-red-500 transition-all relative overflow-hidden"
+      className="group w-full h-full aspect-[2/3] rounded-md bg-neutral-800 hover:ring-2 hover:ring-red-500 transition-all relative overflow-hidden"
     >
       {!failed ? (
         <img
@@ -40,11 +40,13 @@ export function MediaTile({
   item,
   onPlay,
   onOpenDetail,
+  onOpenShow,
   onOpenPhoto,
 }: {
   item: MediaItem
   onPlay: (mediaItemId: number, itemType: 'media_item' | 'channel') => void
   onOpenDetail: (mediaItemId: number) => void
+  onOpenShow?: (anchorMediaItemId: number) => void
   onOpenPhoto: (mediaItemId: number) => void
 }) {
   const [thumbFailed, setThumbFailed] = useState(false)
@@ -54,25 +56,33 @@ export function MediaTile({
   }
 
   const isChannel = item.itemType === 'channel'
+  const isShow = item.itemType === 'show'
   const progressPct =
     item.progress?.positionSeconds != null && item.durationSeconds
       ? Math.min(100, (item.progress.positionSeconds / item.durationSeconds) * 100)
       : null
 
   // Prefer TMDb poster art; for local videos with no match, fall back to
-  // the frame-grab thumbnail generated at scan time. Live channels have
-  // neither.
-  const imageSrc = item.posterUrl ?? (!isChannel && !thumbFailed ? `/api/media-items/${item.id}/thumbnail` : null)
+  // the frame-grab thumbnail generated at scan time. Live channels and
+  // show tiles without a TMDb match have neither.
+  const imageSrc = item.posterUrl ?? (!isChannel && !isShow && !thumbFailed ? `/api/media-items/${item.id}/thumbnail` : null)
   const episodeBadge =
-    item.seasonNumber != null && item.episodeNumber != null ? `S${item.seasonNumber} · E${item.episodeNumber}` : null
+    !isShow && item.seasonNumber != null && item.episodeNumber != null ? `S${item.seasonNumber} · E${item.episodeNumber}` : null
+
+  const handleClick = () => {
+    if (isChannel) onPlay(item.id!, 'channel')
+    // Live channels play immediately (no useful detail page for live
+    // TV); a grouped show tile opens the show page; everything else
+    // opens the detail page first, same as Jellyfin/Netflix — the
+    // Player itself is reached via its Play button.
+    else if (isShow) onOpenShow?.(item.id!)
+    else onOpenDetail(item.id!)
+  }
 
   return (
     <button
-      // Live channels play immediately (no useful detail page for live
-      // TV); everything else opens the detail page first, same as
-      // Jellyfin/Netflix — the Player itself is reached via its Play button.
-      onClick={() => (isChannel ? onPlay(item.id!, 'channel') : onOpenDetail(item.id!))}
-      className="group aspect-[2/3] rounded-md bg-neutral-800 hover:ring-2 hover:ring-red-500 transition-all flex flex-col items-center justify-center gap-2 p-3 text-center relative overflow-hidden"
+      onClick={handleClick}
+      className="group w-full h-full aspect-[2/3] rounded-md bg-neutral-800 hover:ring-2 hover:ring-red-500 transition-all flex flex-col items-center justify-center gap-2 p-3 text-center relative overflow-hidden"
     >
       {imageSrc ? (
         <img
@@ -84,7 +94,11 @@ export function MediaTile({
       ) : (
         <>
           <svg viewBox="0 0 24 24" className="w-9 h-9 text-neutral-500 group-hover:text-red-400" fill="currentColor">
-            <path d="M8 5v14l11-7z" />
+            {isShow ? (
+              <path d="M4 4h16v16H4V4zm2 2v2h2V6H6zm4 0v2h2V6h-2zm4 0v2h2V6h-2zM6 10v8h12v-8H6z" />
+            ) : (
+              <path d="M8 5v14l11-7z" />
+            )}
           </svg>
           <span className="text-sm text-neutral-200 line-clamp-2">{item.title}</span>
         </>
@@ -122,12 +136,14 @@ export function BrowseGrid({
   onOpenCategory,
   onPlay,
   onOpenDetail,
+  onOpenShow,
   onOpenPhoto,
 }: {
   data: CategoryChildren
   onOpenCategory: (categoryId: number) => void
   onPlay: (mediaItemId: number, itemType: 'media_item' | 'channel') => void
   onOpenDetail: (mediaItemId: number) => void
+  onOpenShow: (anchorMediaItemId: number) => void
   onOpenPhoto: (mediaItemId: number) => void
 }) {
   const hasSubcategories = data.subcategories && data.subcategories.length > 0
@@ -168,7 +184,14 @@ export function BrowseGrid({
           <h2 className="text-sm font-medium text-neutral-400 mb-3 px-1">Titles</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {data.items!.map((item) => (
-              <MediaTile key={item.id} item={item} onPlay={onPlay} onOpenDetail={onOpenDetail} onOpenPhoto={onOpenPhoto} />
+              <MediaTile
+                key={item.id}
+                item={item}
+                onPlay={onPlay}
+                onOpenDetail={onOpenDetail}
+                onOpenShow={onOpenShow}
+                onOpenPhoto={onOpenPhoto}
+              />
             ))}
           </div>
         </section>

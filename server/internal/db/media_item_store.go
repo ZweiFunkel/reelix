@@ -116,6 +116,21 @@ func (s *MediaItemStore) ListRootItems(ctx context.Context, libraryID int64) ([]
 	return scanMediaItemRows(rows)
 }
 
+// ListByLibrary returns every video/photo in a library regardless of
+// folder — used to gather a show's episodes across season subfolders
+// (metadata.Episode.ShowTitle isn't a queryable column, so the caller
+// filters this in Go rather than in SQL).
+func (s *MediaItemStore) ListByLibrary(ctx context.Context, libraryID int64) ([]MediaItem, error) {
+	rows, err := s.db.QueryContext(ctx, selectMediaItemSQL+`
+		WHERE media_item.library_id = ? AND media_item.deleted_at IS NULL
+		ORDER BY media_item.file_path`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMediaItemRows(rows)
+}
+
 // ListRecentByLibrary returns a library's most-recently-added items
 // regardless of which category/subfolder they live in — the "Latest"
 // home-screen row, matching Jellyfin's per-library recent row.
@@ -158,6 +173,15 @@ func scanMediaItemRows(rows *sql.Rows) ([]MediaItem, error) {
 		out = append(out, *item)
 	}
 	return out, rows.Err()
+}
+
+// Delete removes a single media item's row — the caller is responsible
+// for deleting the underlying file, since that's the actually
+// destructive, irreversible part of "delete this content" and belongs
+// at the API layer where the file path is resolved.
+func (s *MediaItemStore) Delete(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM media_item WHERE id = ?`, id)
+	return err
 }
 
 func (s *MediaItemStore) DeleteStale(ctx context.Context, libraryID, currentGeneration int64, deletedAt time.Time) error {

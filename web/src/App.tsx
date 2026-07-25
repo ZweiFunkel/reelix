@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from './lib/api'
-import { useLibraries, useTriggerScan, useUploadToLibrary } from './features/library/hooks'
+import { useLibraries, useTriggerScan, useUploadToLibrary, useDeleteLibrary } from './features/library/hooks'
 import { AddLibraryDialog } from './features/library/AddLibraryDialog'
 import { useLibraryRoot, useCategoryChildren } from './features/browse/hooks'
 import { BrowseGrid } from './features/browse/BrowseGrid'
@@ -9,6 +9,7 @@ import { PhotoLightbox } from './features/browse/PhotoLightbox'
 import { HomePage } from './features/home/HomePage'
 import { AdminPage } from './features/admin/AdminPage'
 import { DetailPage } from './features/detail/DetailPage'
+import { ShowPage } from './features/show/ShowPage'
 import { Player } from './features/player/Player'
 import { useSetupStatus, useMe } from './features/auth/hooks'
 import { SetupPage } from './features/auth/SetupPage'
@@ -44,10 +45,21 @@ function StatusPill() {
   )
 }
 
-function LibraryHeader({ isAdmin, libraryId, onAdd }: { isAdmin: boolean; libraryId: number; onAdd: () => void }) {
+function LibraryHeader({
+  isAdmin,
+  libraryId,
+  onAdd,
+  onDeleted,
+}: {
+  isAdmin: boolean
+  libraryId: number
+  onAdd: () => void
+  onDeleted: () => void
+}) {
   const { data: libraries } = useLibraries()
   const triggerScan = useTriggerScan()
   const uploadToLibrary = useUploadToLibrary()
+  const deleteLibrary = useDeleteLibrary()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const lib = libraries?.find((l) => l.id === libraryId)
   if (!lib) return null
@@ -57,6 +69,12 @@ function LibraryHeader({ isAdmin, libraryId, onAdd }: { isAdmin: boolean; librar
     e.target.value = ''
     if (!file) return
     await uploadToLibrary.mutateAsync({ libraryId: lib.id!, file })
+  }
+
+  const onDelete = async () => {
+    if (!window.confirm(`Remove library "${lib.name}"? This unregisters it from Reelix but does not delete any files.`)) return
+    await deleteLibrary.mutateAsync(lib.id!)
+    onDeleted()
   }
 
   return (
@@ -94,6 +112,13 @@ function LibraryHeader({ isAdmin, libraryId, onAdd }: { isAdmin: boolean; librar
           <button onClick={onAdd} className="px-3 py-2 rounded bg-red-600 hover:bg-red-500 font-medium text-xs">
             + Add library
           </button>
+          <button
+            onClick={onDelete}
+            disabled={deleteLibrary.isPending}
+            className="text-xs px-3 py-2 rounded bg-neutral-800 hover:bg-red-900/60 text-red-400 disabled:opacity-50"
+          >
+            Delete
+          </button>
         </div>
       )}
     </div>
@@ -123,12 +148,14 @@ function BrowseView({
   onOpenCategory,
   onPlay,
   onOpenDetail,
+  onOpenShow,
   onOpenPhoto,
 }: {
   entry: PathEntry
   onOpenCategory: (categoryId: number, label: string) => void
   onPlay: (id: number, itemType: 'media_item' | 'channel') => void
   onOpenDetail: (id: number) => void
+  onOpenShow: (anchorId: number) => void
   onOpenPhoto: (id: number) => void
 }) {
   const root = useLibraryRoot(entry.categoryId === null ? entry.libraryId : null)
@@ -147,6 +174,7 @@ function BrowseView({
       }}
       onPlay={onPlay}
       onOpenDetail={onOpenDetail}
+      onOpenShow={onOpenShow}
       onOpenPhoto={onOpenPhoto}
     />
   )
@@ -166,6 +194,7 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
 
   const current = page.kind === 'browse' ? page.path[page.path.length - 1] : undefined
   const openDetail = (id: number) => setPage({ kind: 'detail', mediaItemId: id })
+  const openShow = (anchorId: number) => setPage({ kind: 'show', anchorMediaItemId: anchorId })
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex">
@@ -193,7 +222,12 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
                 onNavigate={(i) => setPage({ kind: 'browse', path: page.path.slice(0, i + 1) })}
               />
               {current.categoryId === null && (
-                <LibraryHeader isAdmin={isAdmin} libraryId={current.libraryId} onAdd={() => setShowAddLibrary(true)} />
+                <LibraryHeader
+                  isAdmin={isAdmin}
+                  libraryId={current.libraryId}
+                  onAdd={() => setShowAddLibrary(true)}
+                  onDeleted={() => setPage({ kind: 'home' })}
+                />
               )}
               <BrowseView
                 entry={current}
@@ -202,6 +236,7 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
                 }
                 onPlay={(id, itemType) => setPlaying({ id, itemType })}
                 onOpenDetail={openDetail}
+                onOpenShow={openShow}
                 onOpenPhoto={(id) => setPhotoId(id)}
               />
             </>
@@ -224,6 +259,18 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
           {page.kind === 'detail' && (
             <DetailPage
               mediaItemId={page.mediaItemId}
+              isAdmin={isAdmin}
+              onBack={() => setPage({ kind: 'home' })}
+              onPlay={(id, itemType) => setPlaying({ id, itemType })}
+              onOpenDetail={openDetail}
+              onOpenPhoto={(id) => setPhotoId(id)}
+              onDeleted={() => setPage({ kind: 'home' })}
+            />
+          )}
+
+          {page.kind === 'show' && (
+            <ShowPage
+              anchorMediaItemId={page.anchorMediaItemId}
               onBack={() => setPage({ kind: 'home' })}
               onPlay={(id, itemType) => setPlaying({ id, itemType })}
               onOpenDetail={openDetail}

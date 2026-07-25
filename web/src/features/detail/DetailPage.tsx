@@ -1,4 +1,4 @@
-import { useMediaItem, useMediaItemSiblings } from '../browse/hooks'
+import { useMediaItem, useMediaItemSiblings, useDeleteMediaItem } from '../browse/hooks'
 import { MediaTile } from '../browse/BrowseGrid'
 import { PlayIcon, BackIcon } from '../player/icons'
 import { formatClockTime } from '../player/format'
@@ -13,19 +13,31 @@ function formatDurationLong(seconds: number | null | undefined) {
 
 export function DetailPage({
   mediaItemId,
+  isAdmin,
   onBack,
   onPlay,
   onOpenDetail,
   onOpenPhoto,
+  onDeleted,
 }: {
   mediaItemId: number
+  isAdmin: boolean
   onBack: () => void
   onPlay: (mediaItemId: number, itemType: 'media_item' | 'channel') => void
   onOpenDetail: (mediaItemId: number) => void
   onOpenPhoto: (mediaItemId: number) => void
+  onDeleted: () => void
 }) {
   const { data: item, isLoading } = useMediaItem(mediaItemId)
   const siblings = useMediaItemSiblings(mediaItemId)
+  const deleteMediaItem = useDeleteMediaItem()
+
+  const onDelete = async () => {
+    if (!item) return
+    if (!window.confirm(`Permanently delete "${item.title}"? This deletes the actual file and cannot be undone.`)) return
+    await deleteMediaItem.mutateAsync(item.id!)
+    onDeleted()
+  }
 
   if (isLoading || !item) {
     return <p className="text-neutral-500 text-sm">Loading…</p>
@@ -70,13 +82,24 @@ export function DetailPage({
           )}
         </div>
 
-        <button
-          onClick={() => onPlay(item.id!, 'media_item')}
-          className="flex items-center gap-2 px-5 py-2.5 rounded bg-red-600 hover:bg-red-500 font-semibold w-fit"
-        >
-          <PlayIcon className="w-5 h-5" />
-          Play
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onPlay(item.id!, 'media_item')}
+            className="flex items-center gap-2 px-5 py-2.5 rounded bg-red-600 hover:bg-red-500 font-semibold w-fit"
+          >
+            <PlayIcon className="w-5 h-5" />
+            Play
+          </button>
+          {isAdmin && (
+            <button
+              onClick={onDelete}
+              disabled={deleteMediaItem.isPending}
+              className="px-4 py-2.5 rounded bg-neutral-800 hover:bg-red-900/60 text-red-400 text-sm font-medium disabled:opacity-50"
+            >
+              Delete
+            </button>
+          )}
+        </div>
 
         {item.overview && <p className="text-sm text-neutral-300 leading-relaxed">{item.overview}</p>}
       </div>

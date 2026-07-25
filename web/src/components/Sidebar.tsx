@@ -7,6 +7,7 @@ export type Page =
   | { kind: 'browse'; path: PathEntry[] }
   | { kind: 'admin' }
   | { kind: 'detail'; mediaItemId: number }
+  | { kind: 'show'; anchorMediaItemId: number }
 
 export function Sidebar({
   libraries,

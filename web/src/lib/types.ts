@@ -8,3 +8,5 @@ export type LibraryType = 'FOLDER' | 'PHOTO' | 'M3U'
 export type User = components['schemas']['User']
 export type Profile = components['schemas']['Profile']
 export type MeResponse = components['schemas']['MeResponse']
+export type Show = components['schemas']['Show']
+export type ShowSeason = components['schemas']['ShowSeason']

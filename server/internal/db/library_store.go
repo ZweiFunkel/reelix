@@ -76,6 +76,15 @@ func (s *LibraryStore) FinishScan(ctx context.Context, libraryID int64, finished
 	return err
 }
 
+// Delete removes the library and (via ON DELETE CASCADE) its categories,
+// media items and channels — the row's rootPath, and any real files
+// under it, are never touched. Unregistering a library must stay safe
+// to do even when rootPath points at an admin's real media folder.
+func (s *LibraryStore) Delete(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM library WHERE id = ?`, id)
+	return err
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }

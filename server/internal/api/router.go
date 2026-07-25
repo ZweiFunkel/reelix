@@ -117,6 +117,7 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 		r.With(authMW.RequireAdmin).Post("/", s.handleCreateLibrary)
 		r.With(authMW.RequireAdmin).Post("/{libraryId}/scan", s.handleTriggerScan)
 		r.With(authMW.RequireAdmin).Post("/{libraryId}/upload", s.handleUploadToLibrary)
+		r.With(authMW.RequireAdmin).Delete("/{libraryId}", s.handleDeleteLibrary)
 	})
 	r.With(authMW.RequireProfile).Get("/api/libraries/{libraryId}/root", s.handleLibraryRoot)
 	r.With(authMW.RequireProfile).Get("/api/libraries/{libraryId}/recent", s.handleLibraryRecent)
@@ -137,6 +138,8 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 		r.Post("/{mediaItemId}/progress", s.handleUpdateProgress)
 		r.Get("/{mediaItemId}/thumbnail", s.handleThumbnail)
 		r.Get("/{mediaItemId}/siblings", s.handleMediaItemSiblings)
+		r.Get("/{mediaItemId}/show", s.handleGetShow)
+		r.With(authMW.RequireAdmin).Delete("/{mediaItemId}", s.handleDeleteMediaItem)
 	})
 
 	r.Route("/api/channels", func(r chi.Router) {

@@ -297,6 +297,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/libraries/{libraryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unregister a library (never touches files on disk — admin only) */
+        delete: operations["deleteLibrary"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/libraries/{libraryId}/scan": {
         parameters: {
             query?: never;
@@ -410,7 +427,8 @@ export interface paths {
         get: operations["getMediaItem"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Permanently delete this item's row AND its underlying file (admin only, irreversible) */
+        delete: operations["deleteMediaItem"];
         options?: never;
         head?: never;
         patch?: never;
@@ -459,6 +477,23 @@ export interface paths {
         };
         /** Other items in the same folder, ordered by episode number when available — the "More from Season X" row, and how the player finds what's next */
         get: operations["getMediaItemSiblings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/media-items/{mediaItemId}/show": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every episode of the show this item belongs to, across the whole library, grouped by season */
+        get: operations["getShow"];
         put?: never;
         post?: never;
         delete?: never;
@@ -561,11 +596,11 @@ export interface components {
             positionSeconds?: number;
             watched?: boolean;
         };
-        /** @description A playable browse-listing entry — a local video/photo (itemType=media_item) or an M3U channel (itemType=channel), sharing one shape so the browse API and client don't need to special-case the source. */
+        /** @description A playable browse-listing entry — a local video/photo (itemType=media_item), an M3U channel (itemType=channel), or a synthetic grouped tile standing in for a whole TV show (itemType=show, id is one representative episode's id — see GET /api/media-items/{id}/show) — sharing one shape so the browse API and client don't need to special-case the source. */
         MediaItem: {
             id?: number;
             /** @enum {string} */
-            itemType?: "media_item" | "channel";
+            itemType?: "media_item" | "channel" | "show";
             title?: string;
             filePath?: string;
             durationSeconds?: number | null;
@@ -642,6 +677,17 @@ export interface components {
         CategoryChildren: {
             subcategories?: components["schemas"]["Category"][];
             items?: components["schemas"]["MediaItem"][];
+        };
+        ShowSeason: {
+            seasonNumber?: number;
+            episodes?: components["schemas"]["MediaItem"][];
+        };
+        Show: {
+            title?: string;
+            overview?: string | null;
+            posterUrl?: string | null;
+            backdropUrl?: string | null;
+            seasons?: components["schemas"]["ShowSeason"][];
         };
     };
     responses: never;
@@ -1143,6 +1189,26 @@ export interface operations {
             };
         };
     };
+    deleteLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                libraryId: components["parameters"]["LibraryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     triggerLibraryScan: {
         parameters: {
             query?: never;
@@ -1298,6 +1364,26 @@ export interface operations {
             };
         };
     };
+    deleteMediaItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mediaItemId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     streamMediaItem: {
         parameters: {
             query?: never;
@@ -1357,6 +1443,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MediaItem"][];
                 };
+            };
+        };
+    };
+    getShow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mediaItemId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Show detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Show"];
+                };
+            };
+            /** @description This item isn't part of a TV show */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
