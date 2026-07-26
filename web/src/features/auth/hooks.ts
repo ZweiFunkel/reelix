@@ -4,6 +4,12 @@ import { api, unwrap } from '../../lib/api'
 export function useSetupStatus() {
   return useQuery({
     queryKey: ['setup-status'],
+    // This is what native shells key off of to decide the server's
+    // unreachable and fall back to local-only — fail fast instead of
+    // the default 3-retry exponential backoff so that decision (and
+    // the loading screen before it) doesn't drag on for several
+    // seconds every time there's no server configured or reachable.
+    retry: 1,
     queryFn: () => api.GET('/api/setup/status').then(unwrap),
   })
 }

@@ -377,7 +377,6 @@ function AppContent() {
   const [localOnly, setLocalOnly] = useState(nativeNoServer)
   const [connected, setConnected] = useState(!isNativeShell() || !!getServerUrl())
   const [switchingProfile, setSwitchingProfile] = useState(false)
-  const health = useHealth()
   const setupStatus = useSetupStatus()
   const me = useMe()
 
@@ -400,8 +399,16 @@ function AppContent() {
     return <ServerConnectPage onConnected={() => setConnected(true)} onSkip={() => setLocalOnly(true)} />
   }
 
-  if (isNativeShell() && health.isError) {
-    return <LocalOnlyShell offlineNotice onRetry={() => health.refetch()} onConnected={() => health.refetch()} />
+  // setupStatus is the one query gating whether we've heard from the
+  // server at all — once it's succeeded once, react-query keeps that
+  // cached result and isError won't flip true again just because a
+  // later background refetch has a hiccup, so this can't yank someone
+  // off the login form mid-typing the way an independent health-check
+  // query could (and once did: that query racing setupStatus/me on the
+  // very first load, resolving to its own first-ever error after
+  // LoginPage had already rendered from the other two succeeding).
+  if (isNativeShell() && setupStatus.isError) {
+    return <LocalOnlyShell offlineNotice onRetry={() => setupStatus.refetch()} onConnected={() => setupStatus.refetch()} />
   }
 
   if (setupStatus.isLoading || (me.isLoading && !me.isError)) {
