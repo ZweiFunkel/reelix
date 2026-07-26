@@ -20,7 +20,21 @@ export function LocalOnlyShell({
   const [connecting, setConnecting] = useState(false)
 
   if (connecting) {
-    return <ServerConnectPage onConnected={onConnected} onSkip={() => setConnecting(false)} />
+    return (
+      <ServerConnectPage
+        onConnected={() => {
+          // Reset this component's own state regardless of what the
+          // parent's onConnected does — for the "offline, reconfigure"
+          // case that's just a background setupStatus.refetch(), which
+          // doesn't itself unmount this shell, so without this the
+          // connect form was left sitting there with no next step
+          // until (and unless) that refetch happened to resolve.
+          setConnecting(false)
+          onConnected()
+        }}
+        onSkip={() => setConnecting(false)}
+      />
+    )
   }
 
   return (
