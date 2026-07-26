@@ -20,6 +20,7 @@ import { AccountSettingsModal } from './features/auth/AccountSettingsModal'
 import { EmailVerificationGate } from './features/auth/EmailVerificationGate'
 import { LocalLibraryPage } from './features/local/LocalLibraryPage'
 import { LocalOnlyShell } from './features/local/LocalOnlyShell'
+import { UpdateBanner } from './features/update/UpdateBanner'
 import { isNativeShell, getServerUrl } from './lib/platform'
 import { Sidebar, type Page, type PathEntry } from './components/Sidebar'
 import { UserMenu } from './components/UserMenu'
@@ -358,6 +359,15 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
 }
 
 function App() {
+  return (
+    <>
+      <UpdateBanner />
+      <AppContent />
+    </>
+  )
+}
+
+function AppContent() {
   const nativeNoServer = isNativeShell() && !getServerUrl()
   const [localOnly, setLocalOnly] = useState(nativeNoServer)
   const [connected, setConnected] = useState(!isNativeShell() || !!getServerUrl())
