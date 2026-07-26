@@ -326,6 +326,37 @@ pub fn read_local_text_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| e.to_string())
 }
 
+/// Opens a native folder picker for batch-importing every playlist file
+/// in a directory at once (a receiver/provider export folder full of
+/// .m3u files is a common IPTV workflow) — the single-file picker above
+/// stays for adding just one.
+#[tauri::command]
+pub async fn pick_local_m3u_folder(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog().file().pick_folder(move |path| {
+        let _ = tx.send(path.and_then(|p| p.into_path().ok()).map(|p| p.to_string_lossy().to_string()));
+    });
+    rx.recv().map_err(|e| e.to_string())
+}
+
+/// Lists every .m3u/.m3u8 file found under a folder (recursively), for
+/// the batch playlist import flow to read and parse one at a time.
+#[tauri::command]
+pub fn list_m3u_files_in_folder(folder_path: String) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for entry in walkdir::WalkDir::new(&folder_path).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let ext = entry.path().extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        if ext == "m3u" || ext == "m3u8" {
+            out.push(entry.path().to_string_lossy().to_string());
+        }
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 pub fn add_local_playlist(app: AppHandle, name: String, source_path: String, channels: Vec<ChannelInput>) -> Result<i64, String> {
     let conn = open_db(&app)?;

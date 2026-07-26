@@ -22,6 +22,7 @@ export function LocalPlayer({ src, title, onClose }: { src: string; title: strin
   const [muted, setMuted] = useState(false)
   const [buffering, setBuffering] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
+  const [playbackError, setPlaybackError] = useState<string | null>(null)
   const idleTimerRef = useRef<number | null>(null)
 
   const isDirectPlay = DIRECT_PLAY_EXTENSIONS.some((ext) => src.toLowerCase().split('?')[0].endsWith(ext))
@@ -29,6 +30,7 @@ export function LocalPlayer({ src, title, onClose }: { src: string; title: strin
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
+    setPlaybackError(null)
 
     if (isDirectPlay || !Hls.isSupported()) {
       video.src = src
@@ -38,6 +40,9 @@ export function LocalPlayer({ src, title, onClose }: { src: string; title: strin
     const hls = new Hls()
     hls.on(Hls.Events.ERROR, (_event, data) => {
       console.error('reelix: local HLS error', data.type, data.details, data.fatal ? '(fatal)' : '', data)
+      if (data.fatal) {
+        setPlaybackError(`Can't play this stream (${data.details}). If this is an IPTV channel, its own server or receiver might need to be online/tuned to it first.`)
+      }
     })
     hls.loadSource(src)
     hls.attachMedia(video)
@@ -153,8 +158,18 @@ export function LocalPlayer({ src, title, onClose }: { src: string; title: strin
             setMuted(e.currentTarget.muted)
           }}
           onEnded={onClose}
+          onError={(e) => {
+            const err = e.currentTarget.error
+            console.error('reelix: local video error', err?.code, err?.message)
+            setPlaybackError(`Can't play this stream${err?.message ? ` (${err.message})` : ''}. If this is an IPTV channel, its own server or receiver might need to be online/tuned to it first.`)
+          }}
         />
-        {buffering && <SpinnerIcon className="w-12 h-12 text-white/80 animate-spin absolute pointer-events-none" />}
+        {buffering && !playbackError && <SpinnerIcon className="w-12 h-12 text-white/80 animate-spin absolute pointer-events-none" />}
+        {playbackError && (
+          <div className="absolute inset-0 flex items-center justify-center px-8">
+            <p className="text-neutral-300 text-sm text-center max-w-md">{playbackError}</p>
+          </div>
+        )}
       </div>
 
       <div

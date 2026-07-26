@@ -2,9 +2,9 @@ mod commands;
 
 use commands::local_files::{
     add_local_playlist, add_local_root, list_local_category_contents, list_local_playlists,
-    list_local_root_contents, list_local_roots, list_playlist_channels, pick_local_folders,
-    pick_local_m3u_file, read_local_text_file, remove_local_playlist, remove_local_root,
-    rescan_local_root,
+    list_local_root_contents, list_local_roots, list_m3u_files_in_folder, list_playlist_channels,
+    pick_local_folders, pick_local_m3u_file, pick_local_m3u_folder, read_local_text_file,
+    remove_local_playlist, remove_local_root, rescan_local_root,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -30,6 +30,8 @@ pub fn run() {
             list_local_root_contents,
             list_local_category_contents,
             pick_local_m3u_file,
+            pick_local_m3u_folder,
+            list_m3u_files_in_folder,
             read_local_text_file,
             add_local_playlist,
             list_local_playlists,

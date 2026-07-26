@@ -11,6 +11,7 @@ import {
   listLocalPlaylists,
   listPlaylistChannels,
   pickAndAddLocalPlaylist,
+  pickAndAddLocalPlaylistFolder,
   removeLocalPlaylist,
   type LocalItem,
 } from '../../lib/nativeLocal'
@@ -166,6 +167,10 @@ function PlaylistsSection() {
     mutationFn: pickAndAddLocalPlaylist,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['local-playlists'] }),
   })
+  const addPlaylistFolder = useMutation({
+    mutationFn: pickAndAddLocalPlaylistFolder,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['local-playlists'] }),
+  })
   const remove = useMutation({
     mutationFn: removeLocalPlaylist,
     onSuccess: () => {
@@ -180,15 +185,25 @@ function PlaylistsSection() {
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-medium">Local M3U playlists</h2>
-        <button
-          onClick={() => addPlaylist.mutate()}
-          disabled={addPlaylist.isPending}
-          className="px-3 py-2 rounded bg-red-600 hover:bg-red-500 disabled:opacity-50 text-xs font-medium"
-        >
-          {addPlaylist.isPending ? 'Adding…' : '+ Add .m3u playlist'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => addPlaylist.mutate()}
+            disabled={addPlaylist.isPending}
+            className="px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-xs font-medium"
+          >
+            {addPlaylist.isPending ? 'Adding…' : '+ Add single playlist'}
+          </button>
+          <button
+            onClick={() => addPlaylistFolder.mutate()}
+            disabled={addPlaylistFolder.isPending}
+            className="px-3 py-2 rounded bg-red-600 hover:bg-red-500 disabled:opacity-50 text-xs font-medium"
+          >
+            {addPlaylistFolder.isPending ? 'Adding…' : '+ Add folder of playlists'}
+          </button>
+        </div>
       </div>
       {addPlaylist.isError && <p className="text-sm text-red-400">{(addPlaylist.error as Error).message}</p>}
+      {addPlaylistFolder.isError && <p className="text-sm text-red-400">{(addPlaylistFolder.error as Error).message}</p>}
       <p className="text-xs text-neutral-500">
         Parsed and browsable fully offline, no Reelix server involved. Playing a channel still needs a network connection to reach that channel's own stream.
       </p>

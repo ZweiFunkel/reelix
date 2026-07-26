@@ -88,22 +88,29 @@ async function capacitorPickAndCopyVideos(): Promise<CapVideo[]> {
   return merged
 }
 
-async function capacitorPickAndAddPlaylist(): Promise<CapPlaylist[]> {
+// limit: 1 for the "add one playlist" action; 0 (unlimited) doubles as
+// the "add a folder of playlists" action on Android, since SAF folder
+// access with recursive listing isn't worth the extra complexity here —
+// selecting every .m3u file at once gets the same result.
+async function capacitorPickAndAddPlaylists(limit: 0 | 1): Promise<CapPlaylist[]> {
   const { FilePicker } = await import('@capawesome/capacitor-file-picker')
-  const result = await FilePicker.pickFiles({ types: ['audio/x-mpegurl', 'application/x-mpegurl', '*/*'], limit: 1, readData: true })
-  const file = result.files[0]
-  if (!file?.data) throw new Error('No playlist file selected')
+  const result = await FilePicker.pickFiles({ types: ['audio/x-mpegurl', 'application/x-mpegurl', '*/*'], limit, readData: true })
+  if (result.files.length === 0) throw new Error('No playlist file selected')
 
-  const text = atob(file.data)
-  const entries = parseM3U(text)
   const playlists = readJSON<CapPlaylist[]>(CAP_PLAYLISTS_KEY, [])
-  const playlist: CapPlaylist = {
-    id: nextId(playlists),
-    name: file.name.replace(/\.(m3u8?|txt)$/i, ''),
-    sourcePath: file.path ?? file.name,
-    channels: entries.map((e, i) => ({ id: i + 1, name: e.name, groupTitle: e.groupTitle, streamUrl: e.streamUrl, tvgLogo: e.tvgLogo })),
+  const added: CapPlaylist[] = []
+  for (const file of result.files) {
+    if (!file.data) continue
+    const text = atob(file.data)
+    const entries = parseM3U(text)
+    added.push({
+      id: nextId(playlists) + added.length,
+      name: file.name.replace(/\.(m3u8?|txt)$/i, ''),
+      sourcePath: file.path ?? file.name,
+      channels: entries.map((e, i) => ({ id: i + 1, name: e.name, groupTitle: e.groupTitle, streamUrl: e.streamUrl, tvgLogo: e.tvgLogo })),
+    })
   }
-  const merged = [...playlists, playlist]
+  const merged = [...playlists, ...added]
   writeJSON(CAP_PLAYLISTS_KEY, merged)
   return merged
 }
@@ -169,22 +176,47 @@ export function localFileSrc(path: string): string {
   return path
 }
 
+async function tauriImportM3UFile(path: string): Promise<void> {
+  const text = await tauriInvoke<string>('read_local_text_file', { path })
+  const entries = parseM3U(text)
+  const name = path.split(/[\\/]/).pop()?.replace(/\.(m3u8?|txt)$/i, '') ?? 'Playlist'
+  await tauriInvoke('add_local_playlist', {
+    name,
+    sourcePath: path,
+    channels: entries.map((e) => ({ name: e.name, groupTitle: e.groupTitle, streamUrl: e.streamUrl, tvgLogo: e.tvgLogo })),
+  })
+}
+
 export async function pickAndAddLocalPlaylist(): Promise<void> {
   if (isTauri()) {
     const path = await tauriInvoke<string | null>('pick_local_m3u_file')
     if (!path) return
-    const text = await tauriInvoke<string>('read_local_text_file', { path })
-    const entries = parseM3U(text)
-    const name = path.split(/[\\/]/).pop()?.replace(/\.(m3u8?|txt)$/i, '') ?? 'Playlist'
-    await tauriInvoke('add_local_playlist', {
-      name,
-      sourcePath: path,
-      channels: entries.map((e) => ({ name: e.name, groupTitle: e.groupTitle, streamUrl: e.streamUrl, tvgLogo: e.tvgLogo })),
-    })
+    await tauriImportM3UFile(path)
     return
   }
   if (isCapacitorNative()) {
-    await capacitorPickAndAddPlaylist()
+    await capacitorPickAndAddPlaylists(1)
+    return
+  }
+  throw new Error('Local playlists are only available in the desktop and mobile apps')
+}
+
+// Batch-imports every .m3u/.m3u8 file in a folder as its own playlist —
+// the common case when a receiver/provider export dumps several
+// playlists into one directory. On Android there's no cheap recursive
+// folder API, so this falls back to "pick as many files as you like"
+// in a single picker, which gets the same result for a flat export.
+export async function pickAndAddLocalPlaylistFolder(): Promise<void> {
+  if (isTauri()) {
+    const folder = await tauriInvoke<string | null>('pick_local_m3u_folder')
+    if (!folder) return
+    const files = await tauriInvoke<string[]>('list_m3u_files_in_folder', { folderPath: folder })
+    if (files.length === 0) throw new Error('No .m3u/.m3u8 files found in that folder')
+    for (const path of files) await tauriImportM3UFile(path)
+    return
+  }
+  if (isCapacitorNative()) {
+    await capacitorPickAndAddPlaylists(0)
     return
   }
   throw new Error('Local playlists are only available in the desktop and mobile apps')

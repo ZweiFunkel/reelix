@@ -7,18 +7,32 @@ import { getServerUrl, isNativeShell } from "./platform";
 // the bundled frontend loads from a local asset origin instead, so it
 // needs the user-configured remote server's absolute URL, and cookies
 // must be explicitly requested since they're no longer same-origin.
-const baseUrl = isNativeShell() ? getServerUrl() ?? "" : "";
+//
+// getServerUrl() is read fresh on every call rather than cached once at
+// module load — the very first time a native shell connects to a
+// server, this module has already been evaluated (with nothing in
+// localStorage yet) before ServerConnectPage calls setServerUrl(), so a
+// one-time baseUrl would stay "" for the rest of that session and send
+// every request to the app's own local asset origin instead.
+function currentBaseUrl(): string {
+  return isNativeShell() ? getServerUrl() ?? "" : "";
+}
 
-export const api = createClient<paths>({
-  baseUrl,
-  credentials: isNativeShell() ? "include" : "same-origin",
-});
+export const api = new Proxy({} as ReturnType<typeof createClient<paths>>, {
+  get(_target, prop, receiver) {
+    const client = createClient<paths>({
+      baseUrl: currentBaseUrl(),
+      credentials: isNativeShell() ? "include" : "same-origin",
+    })
+    return Reflect.get(client, prop, receiver)
+  },
+})
 
 // openapi-fetch doesn't model multipart/form-data well, so file uploads
 // go through a plain fetch call using the same base URL/credentials
 // logic as the generated client above.
 export function apiFetch(path: string, init: RequestInit) {
-  return fetch(baseUrl + path, { credentials: isNativeShell() ? "include" : "same-origin", ...init })
+  return fetch(currentBaseUrl() + path, { credentials: isNativeShell() ? "include" : "same-origin", ...init })
 }
 
 // The server's error responses are always `{ error: string }` (see
