@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import Hls from 'hls.js'
+import mpegts from 'mpegts.js'
 import { formatDuration, formatClockTime } from '../player/format'
 import { PlayIcon, PauseIcon, VolumeIcon, FullscreenIcon, BackIcon, SpinnerIcon } from '../player/icons'
+import { parseEnigma2StreamUrl, zapEnigma2Channel } from '../../lib/enigma2'
 
 const DIRECT_PLAY_EXTENSIONS = ['.mp4', '.webm', '.m4v', '.mov']
+// How long to give an Enigma2 receiver's tuner to lock onto the new
+// channel after a zap request before we start reading its stream —
+// starting immediately reads a mix of the old and new channel's data.
+const ZAP_SETTLE_MS = 1200
 
 // A stripped-down sibling of features/player/Player.tsx for content that
 // isn't a Reelix mediaItemId/channelId — local on-device files and M3U
@@ -23,30 +29,74 @@ export function LocalPlayer({ src, title, onClose }: { src: string; title: strin
   const [buffering, setBuffering] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
   const [playbackError, setPlaybackError] = useState<string | null>(null)
+  const [zapping, setZapping] = useState(false)
   const idleTimerRef = useRef<number | null>(null)
 
   const isDirectPlay = DIRECT_PLAY_EXTENSIONS.some((ext) => src.toLowerCase().split('?')[0].endsWith(ext))
+  const enigma2Target = parseEnigma2StreamUrl(src)
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
     setPlaybackError(null)
+    let cancelled = false
+    let hls: Hls | null = null
+    let tsPlayer: ReturnType<typeof mpegts.createPlayer> | null = null
 
-    if (isDirectPlay || !Hls.isSupported()) {
-      video.src = src
-      return
-    }
-
-    const hls = new Hls()
-    hls.on(Hls.Events.ERROR, (_event, data) => {
-      console.error('reelix: local HLS error', data.type, data.details, data.fatal ? '(fatal)' : '', data)
-      if (data.fatal) {
-        setPlaybackError(`Can't play this stream (${data.details}). If this is an IPTV channel, its own server or receiver might need to be online/tuned to it first.`)
+    ;(async () => {
+      if (enigma2Target) {
+        setZapping(true)
+        try {
+          await zapEnigma2Channel(enigma2Target)
+        } catch (err) {
+          console.warn('reelix: enigma2 zap request failed, trying to play anyway', err)
+        }
+        await new Promise((resolve) => setTimeout(resolve, ZAP_SETTLE_MS))
+        setZapping(false)
       }
-    })
-    hls.loadSource(src)
-    hls.attachMedia(video)
-    return () => hls.destroy()
+      if (cancelled) return
+
+      if (isDirectPlay || (!enigma2Target && !Hls.isSupported())) {
+        video.src = src
+        return
+      }
+
+      // Enigma2/Dreambox receivers stream raw MPEG-TS (not an HLS
+      // manifest), which hls.js can't parse — mpegts.js demuxes that
+      // directly via MSE. Anything else is assumed to be real HLS.
+      if (enigma2Target) {
+        tsPlayer = mpegts.createPlayer({ type: 'mse', isLive: true, url: src })
+        tsPlayer.on(mpegts.Events.ERROR, (type: string, detail: string) => {
+          console.error('reelix: local mpegts error', type, detail)
+          setPlaybackError(`Can't play this receiver's stream (${type}: ${detail}). Check that it's reachable on the network and the channel exists.`)
+        })
+        tsPlayer.attachMediaElement(video)
+        tsPlayer.load()
+        tsPlayer.play()
+        return
+      }
+
+      hls = new Hls()
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        console.error('reelix: local HLS error', data.type, data.details, data.fatal ? '(fatal)' : '', data)
+        if (data.fatal) {
+          setPlaybackError(`Can't play this stream (${data.details}). If this is an IPTV channel, its own server or receiver might need to be online/tuned to it first.`)
+        }
+      })
+      hls.loadSource(src)
+      hls.attachMedia(video)
+    })()
+
+    return () => {
+      cancelled = true
+      hls?.destroy()
+      tsPlayer?.destroy()
+    }
+    // enigma2Target is a pure function of src, so it's intentionally
+    // left out of the deps below — including it (a fresh object every
+    // render) would re-run this effect, and its zap request, every
+    // single render instead of only when src actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, isDirectPlay])
 
   const togglePlay = () => {
@@ -164,7 +214,13 @@ export function LocalPlayer({ src, title, onClose }: { src: string; title: strin
             setPlaybackError(`Can't play this stream${err?.message ? ` (${err.message})` : ''}. If this is an IPTV channel, its own server or receiver might need to be online/tuned to it first.`)
           }}
         />
-        {buffering && !playbackError && <SpinnerIcon className="w-12 h-12 text-white/80 animate-spin absolute pointer-events-none" />}
+        {zapping && (
+          <div className="flex flex-col items-center gap-3 absolute pointer-events-none">
+            <SpinnerIcon className="w-12 h-12 text-white/80 animate-spin" />
+            <span className="text-white/80 text-sm">Switching receiver to this channel…</span>
+          </div>
+        )}
+        {buffering && !playbackError && !zapping && <SpinnerIcon className="w-12 h-12 text-white/80 animate-spin absolute pointer-events-none" />}
         {playbackError && (
           <div className="absolute inset-0 flex items-center justify-center px-8">
             <p className="text-neutral-300 text-sm text-center max-w-md">{playbackError}</p>
