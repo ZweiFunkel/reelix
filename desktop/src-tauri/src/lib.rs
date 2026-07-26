@@ -1,8 +1,10 @@
 mod commands;
 
 use commands::local_files::{
-    add_local_root, list_local_category_contents, list_local_root_contents, list_local_roots,
-    pick_local_folders, rescan_local_root,
+    add_local_playlist, add_local_root, list_local_category_contents, list_local_playlists,
+    list_local_root_contents, list_local_roots, list_playlist_channels, pick_local_folders,
+    pick_local_m3u_file, read_local_text_file, remove_local_playlist, remove_local_root,
+    rescan_local_root,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -24,8 +26,15 @@ pub fn run() {
             add_local_root,
             list_local_roots,
             rescan_local_root,
+            remove_local_root,
             list_local_root_contents,
             list_local_category_contents,
+            pick_local_m3u_file,
+            read_local_text_file,
+            add_local_playlist,
+            list_local_playlists,
+            list_playlist_channels,
+            remove_local_playlist,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

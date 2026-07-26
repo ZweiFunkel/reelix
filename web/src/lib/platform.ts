@@ -10,6 +10,14 @@ export function isNativeShell(): boolean {
   return typeof window !== 'undefined' && (!!(window as any).__TAURI__ || !!(window as any).Capacitor?.isNativePlatform?.())
 }
 
+export function isTauri(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).__TAURI__
+}
+
+export function isCapacitorNative(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.()
+}
+
 export function getServerUrl(): string | null {
   return localStorage.getItem(SERVER_URL_KEY)
 }

@@ -1,5 +1,6 @@
 import type { Library } from '../lib/types'
-import { HomeIcon, FilmIcon, ShieldIcon } from './icons'
+import { isNativeShell } from '../lib/platform'
+import { HomeIcon, FilmIcon, ShieldIcon, DeviceIcon } from './icons'
 
 export type PathEntry = { libraryId: number; categoryId: number | null; label: string }
 export type Page =
@@ -8,6 +9,7 @@ export type Page =
   | { kind: 'admin' }
   | { kind: 'detail'; mediaItemId: number }
   | { kind: 'show'; anchorMediaItemId: number }
+  | { kind: 'local' }
 
 export function Sidebar({
   libraries,
@@ -37,6 +39,18 @@ export function Sidebar({
         <HomeIcon className="w-5 h-5" />
         Home
       </button>
+
+      {isNativeShell() && (
+        <button
+          onClick={() => onNavigate({ kind: 'local' })}
+          className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+            page.kind === 'local' ? 'bg-red-600 text-white' : 'text-neutral-400 hover:bg-neutral-900 hover:text-white'
+          }`}
+        >
+          <DeviceIcon className="w-5 h-5" />
+          On This Device
+        </button>
+      )}
 
       {libraries && libraries.length > 0 && (
         <div className="mt-4 flex flex-col gap-1">

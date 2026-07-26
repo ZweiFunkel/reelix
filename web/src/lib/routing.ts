@@ -14,6 +14,8 @@ export function pageToPath(page: Page): string {
       return `/media/${page.mediaItemId}`
     case 'show':
       return `/show/${page.anchorMediaItemId}`
+    case 'local':
+      return '/local'
     case 'browse': {
       const libraryId = page.path[0]?.libraryId
       const categoryIds = page.path.map((e) => e.categoryId).filter((id): id is number => id != null)
@@ -27,12 +29,14 @@ export type ParsedRoute =
   | { kind: 'admin' }
   | { kind: 'detail'; mediaItemId: number }
   | { kind: 'show'; anchorMediaItemId: number }
+  | { kind: 'local' }
   | { kind: 'browse-ids'; libraryId: number; categoryIds: number[] }
 
 export function parsePath(pathname: string): ParsedRoute {
   const parts = pathname.split('/').filter(Boolean)
   if (parts.length === 0) return { kind: 'home' }
   if (parts[0] === 'admin') return { kind: 'admin' }
+  if (parts[0] === 'local') return { kind: 'local' }
   if (parts[0] === 'media' && parts[1]) return { kind: 'detail', mediaItemId: Number(parts[1]) }
   if (parts[0] === 'show' && parts[1]) return { kind: 'show', anchorMediaItemId: Number(parts[1]) }
   if (parts[0] === 'library' && parts[1]) {
@@ -61,6 +65,8 @@ export function pageFromLocation(): Page {
       return { kind: 'detail', mediaItemId: parsed.mediaItemId }
     case 'show':
       return { kind: 'show', anchorMediaItemId: parsed.anchorMediaItemId }
+    case 'local':
+      return { kind: 'local' }
     case 'browse-ids':
       return {
         kind: 'browse',

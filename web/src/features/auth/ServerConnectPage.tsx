@@ -4,7 +4,7 @@ import { setServerUrl } from '../../lib/platform'
 // Shown once on Tauri/Capacitor before anything else — the native shells
 // bundle this UI locally, so unlike the browser case there's no server
 // to talk to until the user points the app at one.
-export function ServerConnectPage({ onConnected }: { onConnected: () => void }) {
+export function ServerConnectPage({ onConnected, onSkip }: { onConnected: () => void; onSkip?: () => void }) {
   const [url, setUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
@@ -51,6 +51,11 @@ export function ServerConnectPage({ onConnected }: { onConnected: () => void }) 
         >
           {checking ? 'Connecting…' : 'Connect'}
         </button>
+        {onSkip && (
+          <button type="button" onClick={onSkip} className="text-sm text-neutral-500 hover:text-neutral-300">
+            Use without a server — just files on this device
+          </button>
+        )}
       </form>
     </div>
   )

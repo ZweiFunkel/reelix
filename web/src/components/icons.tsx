@@ -47,3 +47,9 @@ export const ChevronDownIcon = ({ className }: IconProps) => (
     <path d="M7 10l5 5 5-5z" />
   </svg>
 )
+
+export const DeviceIcon = ({ className }: IconProps) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+    <path d="M4 4h16a1 1 0 011 1v10a1 1 0 01-1 1h-6v2h3v2H7v-2h3v-2H4a1 1 0 01-1-1V5a1 1 0 011-1zm1 2v9h14V6H5z" />
+  </svg>
+)

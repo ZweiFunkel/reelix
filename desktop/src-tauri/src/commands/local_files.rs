@@ -4,7 +4,7 @@
 // server endpoint accepts this data), not a toggle. See plan §6.
 
 use rusqlite::Connection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -41,6 +41,19 @@ fn open_db(app: &AppHandle) -> Result<Connection, String> {
             path TEXT NOT NULL,
             media_type TEXT NOT NULL,
             UNIQUE (root_id, path)
+        );
+        CREATE TABLE IF NOT EXISTS local_playlist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            source_path TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS local_channel (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            playlist_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            group_title TEXT NOT NULL DEFAULT '',
+            stream_url TEXT NOT NULL,
+            tvg_logo TEXT NOT NULL DEFAULT ''
         );
         ",
     )
@@ -136,6 +149,17 @@ pub fn rescan_local_root(app: AppHandle, root_id: i64) -> Result<(), String> {
         .query_row("SELECT path FROM local_root WHERE id = ?1", [root_id], |row| row.get(0))
         .map_err(|e| e.to_string())?;
     scan_local_root_internal(&conn, root_id, &path)
+}
+
+/// Unregisters a local root — never touches the files on disk, same
+/// non-destructive contract as the server's library delete.
+#[tauri::command]
+pub fn remove_local_root(app: AppHandle, root_id: i64) -> Result<(), String> {
+    let conn = open_db(&app)?;
+    conn.execute("DELETE FROM local_item WHERE root_id = ?1", [root_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM local_category WHERE root_id = ?1", [root_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM local_root WHERE id = ?1", [root_id]).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Local scans are simpler than the server's: no generation tracking or
@@ -235,4 +259,117 @@ fn children(conn: &Connection, root_id: i64, category_id: Option<i64>) -> Result
     }
 
     Ok(LocalChildren { subcategories, items })
+}
+
+// --- Local M3U playlists ---
+//
+// Parsing itself lives in the shared TS layer (web/src/lib/m3u.ts) so
+// the exact same logic runs on desktop and Android — Rust here is just
+// file access (picker + read) and storage, per the "Rust stays shell
+// boilerplate" rule in plan §6. A playlist works fully offline: adding
+// one and browsing its channel list never touches the Reelix server;
+// only playing a channel needs network, to reach that channel's own
+// stream URL.
+
+#[derive(Serialize)]
+pub struct LocalPlaylist {
+    pub id: i64,
+    pub name: String,
+    #[serde(rename = "sourcePath")]
+    pub source_path: String,
+}
+
+#[derive(Serialize)]
+pub struct LocalChannel {
+    pub id: i64,
+    pub name: String,
+    #[serde(rename = "groupTitle")]
+    pub group_title: String,
+    #[serde(rename = "streamUrl")]
+    pub stream_url: String,
+    #[serde(rename = "tvgLogo")]
+    pub tvg_logo: String,
+}
+
+#[derive(Deserialize)]
+pub struct ChannelInput {
+    pub name: String,
+    #[serde(rename = "groupTitle")]
+    pub group_title: String,
+    #[serde(rename = "streamUrl")]
+    pub stream_url: String,
+    #[serde(rename = "tvgLogo")]
+    pub tvg_logo: String,
+}
+
+/// Opens a native file picker filtered to M3U playlists. Returns None
+/// if the user cancels.
+#[tauri::command]
+pub async fn pick_local_m3u_file(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .add_filter("M3U playlist", &["m3u", "m3u8"])
+        .pick_file(move |path| {
+            let _ = tx.send(path.and_then(|p| p.into_path().ok()).map(|p| p.to_string_lossy().to_string()));
+        });
+    rx.recv().map_err(|e| e.to_string())
+}
+
+/// Generic text-file read, reused by the M3U import flow — the frontend
+/// picks the file, reads its contents through this command, parses it
+/// with the shared TS parser, then calls add_local_playlist with the
+/// result.
+#[tauri::command]
+pub fn read_local_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_local_playlist(app: AppHandle, name: String, source_path: String, channels: Vec<ChannelInput>) -> Result<i64, String> {
+    let conn = open_db(&app)?;
+    conn.execute("INSERT INTO local_playlist (name, source_path) VALUES (?1, ?2)", rusqlite::params![name, source_path])
+        .map_err(|e| e.to_string())?;
+    let playlist_id = conn.last_insert_rowid();
+    for ch in channels {
+        conn.execute(
+            "INSERT INTO local_channel (playlist_id, name, group_title, stream_url, tvg_logo) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![playlist_id, ch.name, ch.group_title, ch.stream_url, ch.tvg_logo],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(playlist_id)
+}
+
+#[tauri::command]
+pub fn list_local_playlists(app: AppHandle) -> Result<Vec<LocalPlaylist>, String> {
+    let conn = open_db(&app)?;
+    let mut stmt = conn.prepare("SELECT id, name, source_path FROM local_playlist ORDER BY id").map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| Ok(LocalPlaylist { id: row.get(0)?, name: row.get(1)?, source_path: row.get(2)? }))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_playlist_channels(app: AppHandle, playlist_id: i64) -> Result<Vec<LocalChannel>, String> {
+    let conn = open_db(&app)?;
+    let mut stmt = conn
+        .prepare("SELECT id, name, group_title, stream_url, tvg_logo FROM local_channel WHERE playlist_id = ?1 ORDER BY id")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([playlist_id], |row| {
+            Ok(LocalChannel { id: row.get(0)?, name: row.get(1)?, group_title: row.get(2)?, stream_url: row.get(3)?, tvg_logo: row.get(4)? })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn remove_local_playlist(app: AppHandle, playlist_id: i64) -> Result<(), String> {
+    let conn = open_db(&app)?;
+    conn.execute("DELETE FROM local_channel WHERE playlist_id = ?1", [playlist_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM local_playlist WHERE id = ?1", [playlist_id]).map_err(|e| e.to_string())?;
+    Ok(())
 }

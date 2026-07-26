@@ -18,6 +18,8 @@ import { ProfilePicker } from './features/auth/ProfilePicker'
 import { ServerConnectPage } from './features/auth/ServerConnectPage'
 import { AccountSettingsModal } from './features/auth/AccountSettingsModal'
 import { EmailVerificationGate } from './features/auth/EmailVerificationGate'
+import { LocalLibraryPage } from './features/local/LocalLibraryPage'
+import { LocalOnlyShell } from './features/local/LocalOnlyShell'
 import { isNativeShell, getServerUrl } from './lib/platform'
 import { Sidebar, type Page, type PathEntry } from './components/Sidebar'
 import { UserMenu } from './components/UserMenu'
@@ -322,6 +324,8 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
               onOpenPhoto={(id) => setPhotoId(id)}
             />
           )}
+
+          {page.kind === 'local' && <LocalLibraryPage />}
         </main>
       </div>
 
@@ -354,13 +358,35 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
 }
 
 function App() {
+  const nativeNoServer = isNativeShell() && !getServerUrl()
+  const [localOnly, setLocalOnly] = useState(nativeNoServer)
   const [connected, setConnected] = useState(!isNativeShell() || !!getServerUrl())
   const [switchingProfile, setSwitchingProfile] = useState(false)
+  const health = useHealth()
   const setupStatus = useSetupStatus()
   const me = useMe()
 
+  // Local files/playlists must work with no server ever configured, and
+  // also if one IS configured but unreachable right now (down, no
+  // internet) — both cases fall through to the same local-only shell
+  // rather than stranding a native-shell user on a blank/login screen.
+  if (localOnly) {
+    return (
+      <LocalOnlyShell
+        onConnected={() => {
+          setLocalOnly(false)
+          setConnected(true)
+        }}
+      />
+    )
+  }
+
   if (!connected) {
-    return <ServerConnectPage onConnected={() => setConnected(true)} />
+    return <ServerConnectPage onConnected={() => setConnected(true)} onSkip={() => setLocalOnly(true)} />
+  }
+
+  if (isNativeShell() && health.isError) {
+    return <LocalOnlyShell offlineNotice onRetry={() => health.refetch()} onConnected={() => health.refetch()} />
   }
 
   if (setupStatus.isLoading || (me.isLoading && !me.isError)) {
