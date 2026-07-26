@@ -6,9 +6,15 @@ import { isTauri } from './platform'
 // Actually maximizing the window needs Tauri's own window API instead.
 export async function toggleAppFullscreen(el: HTMLElement | null): Promise<void> {
   if (isTauri()) {
-    const win = (window as any).__TAURI__.window.getCurrentWindow()
-    const isFullscreen = await win.isFullscreen()
-    await win.setFullscreen(!isFullscreen)
+    try {
+      const tauriWindow = (window as any).__TAURI__?.window
+      if (!tauriWindow) throw new Error('window.__TAURI__.window is not available')
+      const win = tauriWindow.getCurrentWindow()
+      const isFullscreen = await win.isFullscreen()
+      await win.setFullscreen(!isFullscreen)
+    } catch (err) {
+      console.error('reelix: toggleAppFullscreen (Tauri) failed', err)
+    }
     return
   }
   if (document.fullscreenElement) await document.exitFullscreen()

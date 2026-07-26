@@ -13,13 +13,15 @@ export function ServerConnectPage({ onConnected, onSkip }: { onConnected: () => 
     e.preventDefault()
     setError(null)
     setChecking(true)
-    const normalized = url.trim().replace(/\/+$/, '')
+    let normalized = url.trim().replace(/\/+$/, '')
+    if (!/^https?:\/\//i.test(normalized)) normalized = `http://${normalized}`
     try {
       const res = await fetch(`${normalized}/api/health`)
       if (!res.ok) throw new Error(`Server responded with ${res.status}`)
       setServerUrl(normalized)
       onConnected()
-    } catch {
+    } catch (err) {
+      console.error('reelix: connecting to server failed', normalized, err)
       setError("Couldn't reach that server — check the address and that it's running.")
     } finally {
       setChecking(false)

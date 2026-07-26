@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 
 	"github.com/novex-labs/reelix/server/internal/auth"
 	"github.com/novex-labs/reelix/server/internal/config"
@@ -78,6 +79,21 @@ func NewRouter(dbConn *sql.DB, cfg config.Config, thumbnailsDir, transcodeDir st
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	// The native desktop/mobile shells load the frontend from their own
+	// origin (http://tauri.localhost, capacitor://localhost, ...) and
+	// call whatever server URL the user configures — always
+	// cross-origin, unlike the browser case where the frontend is
+	// served by this same server. Without this, every request from
+	// those shells either gets an unreadable opaque response or never
+	// even fires past a failed OPTIONS preflight; there's no fixed
+	// origin to allow-list since it's a different one per install.
+	r.Use(cors.Handler(cors.Options{
+		AllowOriginFunc:  func(_ *http.Request, _ string) bool { return true },
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
 
 	r.Get("/api/health", s.handleHealth)
 

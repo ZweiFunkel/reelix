@@ -24,6 +24,7 @@ function VideosSection() {
   const qc = useQueryClient()
   const [path, setPath] = useState<LocalPath>([])
   const [playing, setPlaying] = useState<LocalItem | null>(null)
+  const [viewingPhoto, setViewingPhoto] = useState<LocalItem | null>(null)
   const current = path[path.length - 1]
 
   const roots = useQuery({ queryKey: ['local-roots'], queryFn: listLocalRoots })
@@ -131,7 +132,7 @@ function VideosSection() {
             {contents.data?.items.map((item) => (
               <button
                 key={item.id}
-                onClick={() => setPlaying(item)}
+                onClick={() => (item.mediaType === 'photo' ? setViewingPhoto(item) : setPlaying(item))}
                 className="flex flex-col items-center gap-2 p-3 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-center"
               >
                 {item.mediaType === 'photo' ? (
@@ -147,6 +148,17 @@ function VideosSection() {
       )}
 
       {playing && <LocalPlayer src={localFileSrc(playing.path)} title={playing.title} onClose={() => setPlaying(null)} />}
+      {viewingPhoto && (
+        <div
+          className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center"
+          onClick={() => setViewingPhoto(null)}
+        >
+          <button onClick={() => setViewingPhoto(null)} className="absolute top-4 left-4 text-neutral-300 hover:text-white text-sm">
+            ← Back
+          </button>
+          <img src={localFileSrc(viewingPhoto.path)} className="max-w-[92vw] max-h-[92vh] object-contain" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
     </section>
   )
 }
