@@ -26,10 +26,20 @@ function viaLocalProxy(url: string): string {
 
 export type Enigma2Target = { host: string; serviceRef: string }
 
-// A service ref is a run of colon-separated hex/decimal tokens, at
-// least 5 of them (real refs have 10-11) — distinguishing it from a
-// normal HLS/VOD path.
-const SERVICE_REF_PATTERN = /^[0-9a-fA-F]+(:[0-9a-fA-F]*){4,}$/
+// A service ref is a run of colon-separated hex/decimal tokens — real
+// refs have 10-11 fields, always ending in an empty field (i.e. a
+// trailing colon), which a single regex kept tripping over: some
+// receivers append the channel's display name as one more field after
+// that trailing colon (e.g. "...:0:0:0:" + ":Sky Sports 1", which
+// visually runs together as "...:0::Sky Sports 1"). Walking tokens by
+// hand instead of trying to special-case "::" in a regex keeps the
+// ref's own legitimate trailing colon intact while still dropping the
+// name suffix.
+const MIN_SERVICE_REF_FIELDS = 5
+
+function isHexOrEmpty(token: string): boolean {
+  return /^[0-9a-fA-F]*$/.test(token)
+}
 
 export function parseEnigma2StreamUrl(streamUrl: string): Enigma2Target | null {
   let url: URL
@@ -38,9 +48,14 @@ export function parseEnigma2StreamUrl(streamUrl: string): Enigma2Target | null {
   } catch {
     return null
   }
-  const serviceRef = url.pathname.replace(/^\//, '')
-  if (!SERVICE_REF_PATTERN.test(serviceRef)) return null
-  return { host: url.hostname, serviceRef }
+  const rawPath = url.pathname.replace(/^\//, '')
+  const tokens = rawPath.split(':')
+
+  let fieldCount = 0
+  while (fieldCount < tokens.length && isHexOrEmpty(tokens[fieldCount])) fieldCount++
+  if (fieldCount < MIN_SERVICE_REF_FIELDS) return null
+
+  return { host: url.hostname, serviceRef: tokens.slice(0, fieldCount).join(':') }
 }
 
 // Rewrites a receiver URL (stream or zap) to go through the local

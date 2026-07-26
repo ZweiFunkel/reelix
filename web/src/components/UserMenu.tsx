@@ -2,6 +2,86 @@ import { useEffect, useRef, useState } from 'react'
 import type { Profile, User } from '../lib/types'
 import { SwitchProfileIcon, SettingsIcon, LogoutIcon, ChevronDownIcon } from './icons'
 import { useLogout } from '../features/auth/hooks'
+import { isNativeShell, isTauri, getServerUrl, clearServerUrl } from '../lib/platform'
+
+function ServerAndUpdateSection() {
+  const [checkState, setCheckState] = useState<'idle' | 'checking' | 'none' | 'found' | 'error'>('idle')
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null)
+
+  const checkForUpdates = async () => {
+    setCheckState('checking')
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater')
+      const result = await check()
+      if (result) {
+        setUpdateVersion(result.version)
+        setCheckState('found')
+      } else {
+        setCheckState('none')
+      }
+    } catch (err) {
+      console.warn('reelix: manual update check failed', err)
+      setCheckState('error')
+    }
+  }
+
+  const doUpdate = async () => {
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater')
+      const result = await check()
+      if (!result) return
+      await result.downloadAndInstall()
+      const { relaunch } = await import('@tauri-apps/plugin-process')
+      await relaunch()
+    } catch (err) {
+      console.error('reelix: manual update install failed', err)
+      setCheckState('error')
+    }
+  }
+
+  if (!isNativeShell()) return null
+
+  return (
+    <div className="border-t border-neutral-800 px-4 py-2 flex flex-col gap-2">
+      {getServerUrl() && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-neutral-500 truncate" title={getServerUrl() ?? undefined}>
+            Server: {getServerUrl()}
+          </span>
+          <button
+            onClick={() => {
+              clearServerUrl()
+              window.location.reload()
+            }}
+            className="text-xs text-neutral-400 hover:text-white shrink-0"
+          >
+            Change
+          </button>
+        </div>
+      )}
+      {isTauri() && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-neutral-500">
+            {checkState === 'checking' && 'Checking for updates…'}
+            {checkState === 'none' && "You're up to date"}
+            {checkState === 'found' && `Update v${updateVersion} available`}
+            {checkState === 'error' && "Couldn't check for updates"}
+            {checkState === 'idle' && 'App updates'}
+          </span>
+          {checkState === 'found' ? (
+            <button onClick={doUpdate} className="text-xs px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600 shrink-0">
+              Update now
+            </button>
+          ) : (
+            <button onClick={checkForUpdates} disabled={checkState === 'checking'} className="text-xs text-neutral-400 hover:text-white shrink-0 disabled:opacity-50">
+              Check now
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function UserMenu({
   user,
@@ -70,6 +150,7 @@ export function UserMenu({
             <LogoutIcon className="w-4 h-4" />
             Sign out
           </button>
+          <ServerAndUpdateSection />
         </div>
       )}
     </div>

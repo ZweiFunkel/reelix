@@ -3,6 +3,7 @@ import Hls from 'hls.js'
 import { api } from '../../lib/api'
 import { useMediaItem, useChannel, useMediaItemSiblings } from '../browse/hooks'
 import { formatDuration, formatClockTime } from './format'
+import { toggleAppFullscreen } from '../../lib/fullscreen'
 import { PlayIcon, PauseIcon, SkipBackIcon, SkipForwardIcon, VolumeIcon, FullscreenIcon, BackIcon, SpinnerIcon } from './icons'
 
 const DIRECT_PLAY_EXTENSIONS = ['.mp4', '.webm', '.m4v']
@@ -184,8 +185,7 @@ export function Player({
   }
 
   const toggleFullscreen = () => {
-    if (document.fullscreenElement) document.exitFullscreen()
-    else containerRef.current?.requestFullscreen()
+    toggleAppFullscreen(containerRef.current)
   }
 
   // Prefer the server's ffprobe-derived duration over the <video>

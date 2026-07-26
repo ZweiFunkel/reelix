@@ -198,9 +198,15 @@ fn scan_local_root_internal(conn: &Connection, root_id: i64, root_path: &str) ->
         let Some(media_type) = media_type_for(ext) else { continue };
         let category_id = parent_category_id(&category_ids, &rel_str);
         let name = entry.file_name().to_string_lossy().to_string();
+        // The item's own path column has to be absolute — it's fed
+        // straight into convertFileSrc() on the frontend to build a
+        // playable/viewable asset:// URL, which needs a real
+        // filesystem path, not one relative to the root (rel_str is
+        // only a tree key for the category hierarchy above).
+        let abs_path = path.to_string_lossy().to_string();
         conn.execute(
             "INSERT INTO local_item (root_id, category_id, name, path, media_type) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![root_id, category_id, name, rel_str, media_type],
+            rusqlite::params![root_id, category_id, name, abs_path, media_type],
         )
         .map_err(|e| e.to_string())?;
     }

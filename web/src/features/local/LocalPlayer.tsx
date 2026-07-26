@@ -4,6 +4,7 @@ import mpegts from 'mpegts.js'
 import { formatDuration, formatClockTime } from '../player/format'
 import { PlayIcon, PauseIcon, VolumeIcon, FullscreenIcon, BackIcon, SpinnerIcon } from '../player/icons'
 import { parseEnigma2StreamUrl, zapEnigma2Channel, enigma2StreamSrc } from '../../lib/enigma2'
+import { toggleAppFullscreen } from '../../lib/fullscreen'
 
 const DIRECT_PLAY_EXTENSIONS = ['.mp4', '.webm', '.m4v', '.mov']
 // How long to give an Enigma2 receiver's tuner to lock onto the new
@@ -170,8 +171,7 @@ export function LocalPlayer({ src, title, onClose }: { src: string; title: strin
   }
 
   const toggleFullscreen = () => {
-    if (document.fullscreenElement) document.exitFullscreen()
-    else containerRef.current?.requestFullscreen()
+    toggleAppFullscreen(containerRef.current)
   }
 
   const isLive = !Number.isFinite(duration) || duration === 0

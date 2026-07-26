@@ -30,6 +30,11 @@ import type { MeResponse } from './lib/types'
 function useHealth() {
   return useQuery({
     queryKey: ['health'],
+    // Fails fast on purpose — this gates whether native shells fall
+    // back to the offline/local-only view, and the default 3-retry
+    // exponential backoff was adding several extra seconds to startup
+    // whenever the server wasn't reachable.
+    retry: 1,
     queryFn: async () => {
       const { data, error } = await api.GET('/api/health')
       if (error) throw error
@@ -400,7 +405,13 @@ function AppContent() {
   }
 
   if (setupStatus.isLoading || (me.isLoading && !me.isError)) {
-    return <div className="min-h-screen bg-neutral-950" />
+    return (
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+        <span className="text-2xl font-semibold text-neutral-700">
+          Reel<span className="text-red-900">ix</span>
+        </span>
+      </div>
+    )
   }
 
   if (setupStatus.data?.needsSetup) {
