@@ -3,7 +3,7 @@ import Hls from 'hls.js'
 import mpegts from 'mpegts.js'
 import { formatDuration, formatClockTime } from '../player/format'
 import { PlayIcon, PauseIcon, VolumeIcon, FullscreenIcon, BackIcon, SpinnerIcon } from '../player/icons'
-import { parseEnigma2StreamUrl, zapEnigma2Channel } from '../../lib/enigma2'
+import { parseEnigma2StreamUrl, zapEnigma2Channel, enigma2StreamSrc } from '../../lib/enigma2'
 
 const DIRECT_PLAY_EXTENSIONS = ['.mp4', '.webm', '.m4v', '.mov']
 // How long to give an Enigma2 receiver's tuner to lock onto the new
@@ -65,7 +65,7 @@ export function LocalPlayer({ src, title, onClose }: { src: string; title: strin
       // manifest), which hls.js can't parse — mpegts.js demuxes that
       // directly via MSE. Anything else is assumed to be real HLS.
       if (enigma2Target) {
-        tsPlayer = mpegts.createPlayer({ type: 'mse', isLive: true, url: src })
+        tsPlayer = mpegts.createPlayer({ type: 'mse', isLive: true, url: enigma2StreamSrc(src) })
         tsPlayer.on(mpegts.Events.ERROR, (type: string, detail: string) => {
           console.error('reelix: local mpegts error', type, detail)
           setPlaybackError(`Can't play this receiver's stream (${type}: ${detail}). Check that it's reachable on the network and the channel exists.`)
