@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Hls from 'hls.js'
-import { api } from '../../lib/api'
+import { api, mediaUrl } from '../../lib/api'
+import { getSessionToken, isNativeShell } from '../../lib/platform'
 import { useMediaItem, useChannel, useMediaItemSiblings } from '../browse/hooks'
 import { formatDuration, formatClockTime } from './format'
 import { toggleAppFullscreen } from '../../lib/fullscreen'
@@ -58,7 +59,7 @@ export function Player({
   const [controlsVisible, setControlsVisible] = useState(true)
   const idleTimerRef = useRef<number | null>(null)
 
-  const streamUrl = isChannel ? `/api/channels/${mediaItemId}/stream` : `/api/media-items/${mediaItemId}/stream`
+  const streamUrl = mediaUrl(isChannel ? `/api/channels/${mediaItemId}/stream` : `/api/media-items/${mediaItemId}/stream`)
   // Live channels are always played through hls.js/native HLS — there's
   // no local file extension to inspect, and nothing to seek/resume.
   const isDirectPlay = isChannel ? false : item ? DIRECT_PLAY_EXTENSIONS.some((ext) => item.filePath?.toLowerCase().endsWith(ext)) : true
@@ -80,7 +81,20 @@ export function Player({
     }
 
     if (Hls.isSupported()) {
-      const hls = new Hls()
+      // The manifest URL carries the session token as a query param
+      // (mediaUrl()) for the one request that's a same-origin redirect
+      // away from it, but every segment after that is its own fresh
+      // request to a URL hls.js resolves from the manifest — relative
+      // URL resolution drops a base URL's query string entirely, so
+      // the token never reached those without this. xhrSetup runs
+      // per-request (manifest included), so a header survives all of it.
+      const hls = new Hls({
+        xhrSetup: (xhr) => {
+          if (!isNativeShell()) return
+          const token = getSessionToken()
+          if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+        },
+      })
       hls.on(Hls.Events.ERROR, (_event, data) => {
         // Surfaced so a dying ffmpeg process or a stalled fetch shows up
         // as something diagnosable instead of playback just quietly

@@ -1,4 +1,5 @@
 import { useMediaItem } from './hooks'
+import { mediaUrl } from '../../lib/api'
 
 export function PhotoLightbox({ mediaItemId, onClose }: { mediaItemId: number; onClose: () => void }) {
   const { data: item } = useMediaItem(mediaItemId)
@@ -13,7 +14,7 @@ export function PhotoLightbox({ mediaItemId, onClose }: { mediaItemId: number; o
       </div>
       <div className="flex-1 flex items-center justify-center overflow-hidden">
         <img
-          src={`/api/media-items/${mediaItemId}/stream`}
+          src={mediaUrl(`/api/media-items/${mediaItemId}/stream`)}
           alt={item?.title}
           className="max-h-full max-w-full object-contain"
         />

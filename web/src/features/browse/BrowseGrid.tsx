@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { CategoryChildren, MediaItem } from '../../lib/types'
+import { mediaUrl } from '../../lib/api'
 
 function formatDuration(seconds: number | null | undefined) {
   if (!seconds) return null
@@ -19,7 +20,7 @@ function PhotoTile({ item, onOpen }: { item: MediaItem; onOpen: () => void }) {
     >
       {!failed ? (
         <img
-          src={`/api/media-items/${item.id}/thumbnail`}
+          src={mediaUrl(`/api/media-items/${item.id}/thumbnail`)}
           alt={item.title}
           onError={() => setFailed(true)}
           className="absolute inset-0 w-full h-full object-cover"
@@ -65,7 +66,7 @@ export function MediaTile({
   // Prefer TMDb poster art; for local videos with no match, fall back to
   // the frame-grab thumbnail generated at scan time. Live channels and
   // show tiles without a TMDb match have neither.
-  const imageSrc = item.posterUrl ?? (!isChannel && !isShow && !thumbFailed ? `/api/media-items/${item.id}/thumbnail` : null)
+  const imageSrc = item.posterUrl ?? (!isChannel && !isShow && !thumbFailed ? mediaUrl(`/api/media-items/${item.id}/thumbnail`) : null)
   const episodeBadge =
     !isShow && item.seasonNumber != null && item.episodeNumber != null ? `S${item.seasonNumber} · E${item.episodeNumber}` : null
 

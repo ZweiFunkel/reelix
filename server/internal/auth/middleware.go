@@ -13,8 +13,8 @@ import (
 const CookieName = "reelix_session"
 
 // SessionIDFromRequest returns the session id a request is authenticating
-// with, from either transport: the cookie (browsers, same-origin) or an
-// Authorization: Bearer header.
+// with, from any of three transports: the cookie (browsers, same-origin),
+// an Authorization: Bearer header, or a ?token= query parameter.
 //
 // The header exists because the cookie fundamentally cannot work for the
 // desktop/mobile shells: they load the frontend from their own origin
@@ -24,11 +24,20 @@ const CookieName = "reelix_session"
 // Secure — i.e. HTTPS, which a self-hosted server on a LAN IP typically
 // doesn't have. Same session id, same store, just carried in a header
 // that no such rule applies to.
+//
+// The query parameter exists for the same reason on top of that: a plain
+// <video>/<img> element has no way to attach a custom header to the
+// request it makes for its own src, so stream/thumbnail URLs built for
+// those elements carry the token in the URL instead — see mediaUrl() in
+// the frontend's api.ts.
 func SessionIDFromRequest(r *http.Request) string {
 	if header := r.Header.Get("Authorization"); header != "" {
 		if token, ok := strings.CutPrefix(header, "Bearer "); ok {
 			return strings.TrimSpace(token)
 		}
+	}
+	if token := r.URL.Query().Get("token"); token != "" {
+		return token
 	}
 	if cookie, err := r.Cookie(CookieName); err == nil {
 		return cookie.Value

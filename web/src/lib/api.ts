@@ -50,6 +50,24 @@ export function apiFetch(path: string, init: RequestInit) {
   })
 }
 
+// For URLs handed to a plain <video>/<img> element rather than fetched
+// through api.GET/apiFetch — those elements make their own request for
+// their src with no way to attach a custom header, so the same fix that
+// works for api.ts (an Authorization header) doesn't reach them. This
+// makes the URL itself absolute and carries the token as a query param
+// instead, which the server also accepts (see SessionIDFromRequest).
+// Skipping this for thumbnail/stream/photo URLs was the actual cause of
+// "stream loads in the browser but not the desktop app" even after the
+// bearer-token login fix: the token existed, nothing was sending it.
+export function mediaUrl(path: string): string {
+  const base = currentBaseUrl()
+  if (!isNativeShell()) return path
+  const token = getSessionToken()
+  if (!token) return base + path
+  const separator = path.includes("?") ? "&" : "?"
+  return `${base}${path}${separator}token=${encodeURIComponent(token)}`
+}
+
 // The server's error responses are always `{ error: string }` (see
 // writeError in the Go handlers) — openapi-fetch surfaces that raw JSON
 // body as `error`, not an actual Error instance, so `.message` on it is

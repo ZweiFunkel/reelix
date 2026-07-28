@@ -106,7 +106,18 @@ func (s *Server) handleTranscodeStream(w http.ResponseWriter, r *http.Request, i
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/api/media-items/%d/stream/segments/playlist.m3u8", item.ID), http.StatusFound)
+	// Carries the query string (in particular ?token=..., a native
+	// shell's session credential — see auth.SessionIDFromRequest) along
+	// to the redirect target. Browsers preserve a same-origin redirect's
+	// request headers automatically, so this matters less than it used
+	// to now that the player also sets an Authorization header per
+	// request, but costs nothing to keep correct for whatever hits this
+	// route without that (curl, a future client, ...).
+	target := fmt.Sprintf("/api/media-items/%d/stream/segments/playlist.m3u8", item.ID)
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 type updateProgressRequest struct {
