@@ -1,15 +1,32 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, unwrap } from '../../lib/api'
-import { clearSessionToken, setSessionToken } from '../../lib/platform'
+import { clearSessionToken, isNativeShell, setSessionToken } from '../../lib/platform'
 
 // Login and setup hand back the session id in their response body on top
 // of setting the cookie; native shells persist it and send it as a
 // bearer token from then on, because their cross-site cookie can't be
 // stored over plain HTTP. Browsers get the same field and simply ignore
 // it — the cookie already works there.
-function rememberSession(result: unknown) {
+//
+// A server too old to return the field leaves a native shell with no
+// usable credential at all: login appears to succeed, then every
+// request after it 401s. Fail loudly here instead, since the only fix
+// is on the server and a bare 401 gives no hint of that.
+// Runs inside the mutationFn rather than onSuccess so a throw here
+// actually surfaces as the mutation's error (react-query ignores
+// throws from onSuccess) and reaches the form the user is looking at.
+function rememberSession<T>(result: T): T {
   const token = (result as { sessionToken?: string } | null)?.sessionToken
-  if (token) setSessionToken(token)
+  if (token) {
+    setSessionToken(token)
+    return result
+  }
+  if (isNativeShell()) {
+    throw new Error(
+      "This server is running an older version of Reelix that the app can't stay signed in to. Update the server (run deploy/update.sh on it), then try again.",
+    )
+  }
+  return result
 }
 
 export function useSetupStatus() {
@@ -29,9 +46,8 @@ export function useSetupAdmin() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: { username: string; password: string }) =>
-      api.POST('/api/setup/admin', { body }).then(unwrap),
-    onSuccess: (result) => {
-      rememberSession(result)
+      api.POST('/api/setup/admin', { body }).then(unwrap).then(rememberSession),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['setup-status'] })
       qc.invalidateQueries({ queryKey: ['me'] })
     },
@@ -50,11 +66,8 @@ export function useLogin() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: { username: string; password: string }) =>
-      api.POST('/api/auth/login', { body }).then(unwrap),
-    onSuccess: (result) => {
-      rememberSession(result)
-      qc.invalidateQueries({ queryKey: ['me'] })
-    },
+      api.POST('/api/auth/login', { body }).then(unwrap).then(rememberSession),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
   })
 }
 
