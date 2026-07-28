@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { Profile, User } from '../lib/types'
 import { SwitchProfileIcon, SettingsIcon, LogoutIcon, ChevronDownIcon } from './icons'
 import { useLogout } from '../features/auth/hooks'
-import { isNativeShell, isTauri, isCapacitorNative, getServerUrl, clearServerUrl } from '../lib/platform'
+import { isNativeShell, isTauri, isCapacitorNative, listServers, getActiveServer, setActiveServer, removeServer } from '../lib/platform'
 import { checkAndroidUpdate, openAndroidUpdate, type AndroidUpdate } from '../lib/androidUpdate'
 
-function ServerAndUpdateSection() {
+function ServerAndUpdateSection({ onAddServer }: { onAddServer: () => void }) {
   const [checkState, setCheckState] = useState<'idle' | 'checking' | 'none' | 'found' | 'error'>('idle')
   const [updateVersion, setUpdateVersion] = useState<string | null>(null)
   const [pendingAndroid, setPendingAndroid] = useState<AndroidUpdate | null>(null)
@@ -54,21 +54,49 @@ function ServerAndUpdateSection() {
 
   if (!isNativeShell()) return null
 
+  const servers = listServers()
+  const active = getActiveServer()
+
+  // Switching servers swaps the whole identity and dataset, so rather
+  // than trying to invalidate every cached query, just reload — the app
+  // re-reads the newly active server (and its own token) on boot.
+  const switchTo = (id: string) => {
+    setActiveServer(id)
+    window.location.reload()
+  }
+
   return (
     <div className="border-t border-neutral-800 px-4 py-2 flex flex-col gap-2">
-      {getServerUrl() && (
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-neutral-500 truncate" title={getServerUrl() ?? undefined}>
-            Server: {getServerUrl()}
-          </span>
-          <button
-            onClick={() => {
-              clearServerUrl()
-              window.location.reload()
-            }}
-            className="text-xs text-neutral-400 hover:text-white shrink-0"
-          >
-            Change
+      {servers.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-600">Servers</span>
+          {servers.map((server) => (
+            <div key={server.id} className="flex items-center gap-2">
+              <button
+                onClick={() => (server.id === active?.id ? undefined : switchTo(server.id))}
+                title={server.url}
+                className={`flex-1 min-w-0 flex items-center gap-2 text-left text-xs px-1 py-1 rounded ${
+                  server.id === active?.id ? 'text-neutral-200' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${server.id === active?.id ? 'bg-emerald-400' : 'bg-neutral-700'}`} />
+                <span className="truncate">{server.label}</span>
+              </button>
+              <button
+                onClick={() => {
+                  if (!window.confirm(`Remove "${server.label}"? You'll need to sign in again to add it back.`)) return
+                  removeServer(server.id)
+                  window.location.reload()
+                }}
+                className="text-xs text-neutral-600 hover:text-red-400 shrink-0"
+                title="Remove server"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button onClick={onAddServer} className="text-xs text-neutral-400 hover:text-white text-left px-1 py-1">
+            + Add another server
           </button>
         </div>
       )}
@@ -101,11 +129,13 @@ export function UserMenu({
   activeProfile,
   onOpenAccountSettings,
   onSwitchProfile,
+  onAddServer,
 }: {
   user: User
   activeProfile: Profile | undefined
   onOpenAccountSettings: () => void
   onSwitchProfile: () => void
+  onAddServer: () => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -163,7 +193,12 @@ export function UserMenu({
             <LogoutIcon className="w-4 h-4" />
             Sign out
           </button>
-          <ServerAndUpdateSection />
+          <ServerAndUpdateSection
+            onAddServer={() => {
+              setOpen(false)
+              onAddServer()
+            }}
+          />
         </div>
       )}
     </div>

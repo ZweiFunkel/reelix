@@ -190,7 +190,7 @@ function BrowseView({
   )
 }
 
-function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: () => void }) {
+function MediaApp({ me, onSwitchProfile, onAddServer }: { me: MeResponse; onSwitchProfile: () => void; onAddServer: () => void }) {
   // pageRaw/setPageRaw never touch browser history — used for restoring
   // from a URL (initial load, back/forward) where pushing again would
   // just duplicate the current history entry. setPage (below) is what
@@ -270,6 +270,7 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
                 activeProfile={activeProfile}
                 onOpenAccountSettings={() => setShowAccountSettings(true)}
                 onSwitchProfile={onSwitchProfile}
+                onAddServer={onAddServer}
               />
             )}
           </div>
@@ -386,9 +387,17 @@ function AppContent() {
   const nativeNoServer = isNativeShell() && !getServerUrl()
   const [localOnly, setLocalOnly] = useState(nativeNoServer)
   const [connected, setConnected] = useState(!isNativeShell() || !!getServerUrl())
+  const [addingServer, setAddingServer] = useState(false)
   const [switchingProfile, setSwitchingProfile] = useState(false)
   const setupStatus = useSetupStatus()
   const me = useMe()
+
+  // Adding a server makes it the active one, so everything downstream
+  // (session token, cached queries) belongs to a different server now —
+  // reload rather than trying to swap it all out in place.
+  if (addingServer) {
+    return <ServerConnectPage onConnected={() => window.location.reload()} onSkip={() => setAddingServer(false)} />
+  }
 
   // Local files/playlists must work with no server ever configured, and
   // also if one IS configured but unreachable right now (down, no
@@ -447,7 +456,7 @@ function AppContent() {
     return <ProfilePicker profiles={me.data.profiles ?? []} onSelected={() => setSwitchingProfile(false)} />
   }
 
-  return <MediaApp me={me.data} onSwitchProfile={() => setSwitchingProfile(true)} />
+  return <MediaApp me={me.data} onSwitchProfile={() => setSwitchingProfile(true)} onAddServer={() => setAddingServer(true)} />
 }
 
 export default App

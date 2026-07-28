@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { setServerUrl } from '../../lib/platform'
+import { addServer, normalizeServerUrl } from '../../lib/platform'
 
 // Shown once on Tauri/Capacitor before anything else — the native shells
 // bundle this UI locally, so unlike the browser case there's no server
 // to talk to until the user points the app at one.
 export function ServerConnectPage({ onConnected, onSkip }: { onConnected: () => void; onSkip?: () => void }) {
   const [url, setUrl] = useState('')
+  const [label, setLabel] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
 
@@ -13,12 +14,11 @@ export function ServerConnectPage({ onConnected, onSkip }: { onConnected: () => 
     e.preventDefault()
     setError(null)
     setChecking(true)
-    let normalized = url.trim().replace(/\/+$/, '')
-    if (!/^https?:\/\//i.test(normalized)) normalized = `http://${normalized}`
+    const normalized = normalizeServerUrl(url)
     try {
       const res = await fetch(`${normalized}/api/health`)
       if (!res.ok) throw new Error(`Server responded with ${res.status}`)
-      setServerUrl(normalized)
+      addServer(normalized, label)
       onConnected()
     } catch (err) {
       console.error('reelix: connecting to server failed', normalized, err)
@@ -44,6 +44,12 @@ export function ServerConnectPage({ onConnected, onSkip }: { onConnected: () => 
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://reelix.myserver.com"
           className="bg-neutral-800 rounded px-3 py-2 outline-none focus:ring-1 focus:ring-red-500 font-mono text-sm"
+        />
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="Name (optional) — e.g. Home, Chris's server"
+          className="bg-neutral-800 rounded px-3 py-2 outline-none focus:ring-1 focus:ring-red-500 text-sm"
         />
         {error && <p className="text-sm text-red-400">{error}</p>}
         <button
