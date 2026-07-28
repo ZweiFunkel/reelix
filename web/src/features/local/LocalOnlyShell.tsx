@@ -39,7 +39,7 @@ export function LocalOnlyShell({
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex">
-      <nav className="w-56 shrink-0 border-r border-neutral-900 bg-neutral-950 flex flex-col gap-1 py-6 px-3">
+      <nav className="hidden md:flex w-56 shrink-0 border-r border-neutral-900 bg-neutral-950 flex-col gap-1 py-6 px-3">
         <span className="text-xl font-semibold px-3 mb-6">
           Reel<span className="text-red-500">ix</span>
         </span>
@@ -55,7 +55,15 @@ export function LocalOnlyShell({
         </button>
       </nav>
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="md:hidden flex items-center justify-between gap-3 px-4 py-3 border-b border-neutral-900">
+          <span className="text-lg font-semibold">
+            Reel<span className="text-red-500">ix</span>
+          </span>
+          <button onClick={() => setConnecting(true)} className="text-xs text-neutral-400 hover:text-white shrink-0">
+            {offlineNotice ? 'Reconfigure server' : 'Connect a server'}
+          </button>
+        </header>
         {offlineNotice && (
           <div className="flex items-center justify-between gap-4 px-6 py-2.5 bg-amber-950/60 border-b border-amber-900/60 text-sm text-amber-300">
             <span>Can't reach your Reelix server right now — showing files on this device instead.</span>
@@ -66,7 +74,7 @@ export function LocalOnlyShell({
             )}
           </div>
         )}
-        <main className="px-6 py-6 max-w-6xl w-full mx-auto flex-1">
+        <main className="px-4 md:px-6 py-4 md:py-6 max-w-6xl w-full mx-auto flex-1">
           <LocalLibraryPage />
         </main>
       </div>

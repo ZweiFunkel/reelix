@@ -25,7 +25,9 @@ export function Sidebar({
   const isHome = page.kind === 'home'
 
   return (
-    <nav className="w-56 shrink-0 border-r border-neutral-900 bg-neutral-950 flex flex-col gap-1 py-6 px-3">
+    // Hidden on phones — MobileNav takes over there, since a 224px
+    // fixed sidebar eats most of a phone's width.
+    <nav className="hidden md:flex w-56 shrink-0 border-r border-neutral-900 bg-neutral-950 flex-col gap-1 py-6 px-3">
       <span className="text-xl font-semibold px-3 mb-6">
         Reel<span className="text-red-500">ix</span>
       </span>

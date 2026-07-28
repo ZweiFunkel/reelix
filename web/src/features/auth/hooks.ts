@@ -1,5 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, unwrap } from '../../lib/api'
+import { clearSessionToken, setSessionToken } from '../../lib/platform'
+
+// Login and setup hand back the session id in their response body on top
+// of setting the cookie; native shells persist it and send it as a
+// bearer token from then on, because their cross-site cookie can't be
+// stored over plain HTTP. Browsers get the same field and simply ignore
+// it — the cookie already works there.
+function rememberSession(result: unknown) {
+  const token = (result as { sessionToken?: string } | null)?.sessionToken
+  if (token) setSessionToken(token)
+}
 
 export function useSetupStatus() {
   return useQuery({
@@ -19,7 +30,8 @@ export function useSetupAdmin() {
   return useMutation({
     mutationFn: (body: { username: string; password: string }) =>
       api.POST('/api/setup/admin', { body }).then(unwrap),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      rememberSession(result)
       qc.invalidateQueries({ queryKey: ['setup-status'] })
       qc.invalidateQueries({ queryKey: ['me'] })
     },
@@ -39,7 +51,10 @@ export function useLogin() {
   return useMutation({
     mutationFn: (body: { username: string; password: string }) =>
       api.POST('/api/auth/login', { body }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+    onSuccess: (result) => {
+      rememberSession(result)
+      qc.invalidateQueries({ queryKey: ['me'] })
+    },
   })
 }
 
@@ -47,7 +62,10 @@ export function useLogout() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => api.POST('/api/auth/logout').then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+    onSuccess: () => {
+      clearSessionToken()
+      qc.invalidateQueries({ queryKey: ['me'] })
+    },
   })
 }
 

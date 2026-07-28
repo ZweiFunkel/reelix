@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./api-types";
-import { getServerUrl, isNativeShell } from "./platform";
+import { getServerUrl, getSessionToken, isNativeShell } from "./platform";
 
 // In a browser hitting the server directly, the frontend and API share
 // an origin, so relative paths (baseUrl "") just work. In Tauri/Capacitor
@@ -18,11 +18,22 @@ function currentBaseUrl(): string {
   return isNativeShell() ? getServerUrl() ?? "" : "";
 }
 
+// Native shells send the session as a bearer token, since their
+// cross-site cookie can't be stored without HTTPS — see getSessionToken.
+// Read per request for the same reason baseUrl is: the token doesn't
+// exist yet when this module is first evaluated.
+function authHeaders(): Record<string, string> {
+  if (!isNativeShell()) return {}
+  const token = getSessionToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 export const api = new Proxy({} as ReturnType<typeof createClient<paths>>, {
   get(_target, prop, receiver) {
     const client = createClient<paths>({
       baseUrl: currentBaseUrl(),
       credentials: isNativeShell() ? "include" : "same-origin",
+      headers: authHeaders(),
     })
     return Reflect.get(client, prop, receiver)
   },
@@ -32,7 +43,11 @@ export const api = new Proxy({} as ReturnType<typeof createClient<paths>>, {
 // go through a plain fetch call using the same base URL/credentials
 // logic as the generated client above.
 export function apiFetch(path: string, init: RequestInit) {
-  return fetch(currentBaseUrl() + path, { credentials: isNativeShell() ? "include" : "same-origin", ...init })
+  return fetch(currentBaseUrl() + path, {
+    credentials: isNativeShell() ? "include" : "same-origin",
+    ...init,
+    headers: { ...authHeaders(), ...(init.headers ?? {}) },
+  })
 }
 
 // The server's error responses are always `{ error: string }` (see

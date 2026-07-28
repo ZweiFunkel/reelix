@@ -3,13 +3,38 @@ package auth
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/novex-labs/reelix/server/internal/db"
 )
 
 // CookieName is the session cookie set on login/setup and read by every
-// authenticated request.
+// authenticated request coming from a browser.
 const CookieName = "reelix_session"
+
+// SessionIDFromRequest returns the session id a request is authenticating
+// with, from either transport: the cookie (browsers, same-origin) or an
+// Authorization: Bearer header.
+//
+// The header exists because the cookie fundamentally cannot work for the
+// desktop/mobile shells: they load the frontend from their own origin
+// (http://tauri.localhost, capacitor://localhost) and call a
+// user-configured server, so every request is cross-site. A cross-site
+// cookie needs SameSite=None, which browsers only honour together with
+// Secure — i.e. HTTPS, which a self-hosted server on a LAN IP typically
+// doesn't have. Same session id, same store, just carried in a header
+// that no such rule applies to.
+func SessionIDFromRequest(r *http.Request) string {
+	if header := r.Header.Get("Authorization"); header != "" {
+		if token, ok := strings.CutPrefix(header, "Bearer "); ok {
+			return strings.TrimSpace(token)
+		}
+	}
+	if cookie, err := r.Cookie(CookieName); err == nil {
+		return cookie.Value
+	}
+	return ""
+}
 
 type contextKey string
 
@@ -29,11 +54,11 @@ func NewMiddleware(sessions *db.SessionStore, users *db.UserStore, profiles *db.
 }
 
 func (m *Middleware) sessionFromRequest(r *http.Request) (*db.Session, *db.User) {
-	cookie, err := r.Cookie(CookieName)
-	if err != nil {
+	sessionID := SessionIDFromRequest(r)
+	if sessionID == "" {
 		return nil, nil
 	}
-	sess, err := m.sessions.Get(r.Context(), cookie.Value)
+	sess, err := m.sessions.Get(r.Context(), sessionID)
 	if err != nil || sess == nil {
 		return nil, nil
 	}

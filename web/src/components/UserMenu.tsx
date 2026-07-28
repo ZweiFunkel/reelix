@@ -2,15 +2,24 @@ import { useEffect, useRef, useState } from 'react'
 import type { Profile, User } from '../lib/types'
 import { SwitchProfileIcon, SettingsIcon, LogoutIcon, ChevronDownIcon } from './icons'
 import { useLogout } from '../features/auth/hooks'
-import { isNativeShell, isTauri, getServerUrl, clearServerUrl } from '../lib/platform'
+import { isNativeShell, isTauri, isCapacitorNative, getServerUrl, clearServerUrl } from '../lib/platform'
+import { checkAndroidUpdate, openAndroidUpdate, type AndroidUpdate } from '../lib/androidUpdate'
 
 function ServerAndUpdateSection() {
   const [checkState, setCheckState] = useState<'idle' | 'checking' | 'none' | 'found' | 'error'>('idle')
   const [updateVersion, setUpdateVersion] = useState<string | null>(null)
+  const [pendingAndroid, setPendingAndroid] = useState<AndroidUpdate | null>(null)
 
   const checkForUpdates = async () => {
     setCheckState('checking')
     try {
+      if (isCapacitorNative()) {
+        const result = await checkAndroidUpdate()
+        setPendingAndroid(result)
+        setUpdateVersion(result?.version ?? null)
+        setCheckState(result ? 'found' : 'none')
+        return
+      }
       const { check } = await import('@tauri-apps/plugin-updater')
       const result = await check()
       if (result) {
@@ -27,6 +36,10 @@ function ServerAndUpdateSection() {
 
   const doUpdate = async () => {
     try {
+      if (pendingAndroid) {
+        await openAndroidUpdate(pendingAndroid)
+        return
+      }
       const { check } = await import('@tauri-apps/plugin-updater')
       const result = await check()
       if (!result) return
@@ -59,7 +72,7 @@ function ServerAndUpdateSection() {
           </button>
         </div>
       )}
-      {isTauri() && (
+      {(isTauri() || isCapacitorNative()) && (
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-neutral-500">
             {checkState === 'checking' && 'Checking for updates…'}
@@ -70,7 +83,7 @@ function ServerAndUpdateSection() {
           </span>
           {checkState === 'found' ? (
             <button onClick={doUpdate} className="text-xs px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600 shrink-0">
-              Update now
+              {pendingAndroid ? 'Download' : 'Update now'}
             </button>
           ) : (
             <button onClick={checkForUpdates} disabled={checkState === 'checking'} className="text-xs text-neutral-400 hover:text-white shrink-0 disabled:opacity-50">

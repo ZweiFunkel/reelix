@@ -23,6 +23,7 @@ import { LocalOnlyShell } from './features/local/LocalOnlyShell'
 import { UpdateBanner } from './features/update/UpdateBanner'
 import { isNativeShell, getServerUrl } from './lib/platform'
 import { Sidebar, type Page, type PathEntry } from './components/Sidebar'
+import { MobileNav } from './components/MobileNav'
 import { UserMenu } from './components/UserMenu'
 import { pageToPath, pageFromLocation, LOADING_LABEL } from './lib/routing'
 import type { MeResponse } from './lib/types'
@@ -252,21 +253,30 @@ function MediaApp({ me, onSwitchProfile }: { me: MeResponse; onSwitchProfile: ()
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex">
       <Sidebar libraries={libraries} page={page} isAdmin={isAdmin} onNavigate={setPage} />
+      <MobileNav libraries={libraries} page={page} isAdmin={isAdmin} onNavigate={setPage} />
 
-      <div className="flex-1 flex flex-col">
-        <header className="flex items-center justify-end gap-4 px-6 py-4 border-b border-neutral-900">
-          <StatusPill />
-          {me.user && (
-            <UserMenu
-              user={me.user}
-              activeProfile={activeProfile}
-              onOpenAccountSettings={() => setShowAccountSettings(true)}
-              onSwitchProfile={onSwitchProfile}
-            />
-          )}
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="flex items-center justify-between md:justify-end gap-4 px-4 md:px-6 py-3 md:py-4 border-b border-neutral-900">
+          {/* The wordmark lives in the sidebar on desktop, which phones
+              don't show — repeat it in the header there instead. */}
+          <span className="md:hidden text-lg font-semibold">
+            Reel<span className="text-red-500">ix</span>
+          </span>
+          <div className="flex items-center gap-4">
+            <StatusPill />
+            {me.user && (
+              <UserMenu
+                user={me.user}
+                activeProfile={activeProfile}
+                onOpenAccountSettings={() => setShowAccountSettings(true)}
+                onSwitchProfile={onSwitchProfile}
+              />
+            )}
+          </div>
         </header>
 
-        <main className="px-6 py-6 max-w-6xl w-full mx-auto flex flex-col gap-6">
+        {/* pb-24 keeps the last row clear of the fixed mobile tab bar. */}
+        <main className="px-4 md:px-6 py-4 md:py-6 pb-24 md:pb-6 max-w-6xl w-full mx-auto flex flex-col gap-6">
           {page.kind === 'browse' && current && (
             <>
               <Breadcrumbs

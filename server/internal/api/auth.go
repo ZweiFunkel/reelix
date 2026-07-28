@@ -106,10 +106,11 @@ func (s *Server) handleSetupAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.startSession(w, r, user.ID, &profile.ID)
+	sessionToken := s.startSession(w, r, user.ID, &profile.ID)
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"user":            toUserDTO(*user),
 		"activeProfileId": profile.ID,
+		"sessionToken":    sessionToken,
 	})
 }
 
@@ -142,7 +143,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		activeProfileID = &profiles[0].ID
 	}
 
-	s.startSession(w, r, user.ID, activeProfileID)
+	sessionToken := s.startSession(w, r, user.ID, activeProfileID)
 
 	dtos := make([]profileDTO, len(profiles))
 	for i, p := range profiles {
@@ -152,29 +153,35 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		"user":            toUserDTO(*user),
 		"profiles":        dtos,
 		"activeProfileId": activeProfileID,
+		"sessionToken":    sessionToken,
 	})
 }
 
-func (s *Server) startSession(w http.ResponseWriter, r *http.Request, userID int64, profileID *int64) {
+// startSession returns the new session id so callers can hand it back in
+// the response body as well — see the sessionToken field on the login
+// and setup responses, and auth.SessionIDFromRequest for why the cookie
+// alone isn't enough for the native shells.
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, userID int64, profileID *int64) string {
 	sessionID, err := auth.GenerateSessionID()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
-		return
+		return ""
 	}
 	expiresAt := time.Now().Add(sessionTTL)
 	if _, err := s.sessions.Create(r.Context(), sessionID, userID, expiresAt); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
-		return
+		return ""
 	}
 	if profileID != nil {
 		_ = s.sessions.SetProfile(r.Context(), sessionID, *profileID)
 	}
 	s.setSessionCookie(w, sessionID, expiresAt)
+	return sessionID
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie(auth.CookieName); err == nil {
-		_ = s.sessions.Delete(r.Context(), cookie.Value)
+	if sessionID := auth.SessionIDFromRequest(r); sessionID != "" {
+		_ = s.sessions.Delete(r.Context(), sessionID)
 	}
 	http.SetCookie(w, &http.Cookie{Name: auth.CookieName, Value: "", Path: "/", MaxAge: -1})
 	w.WriteHeader(http.StatusNoContent)

@@ -726,6 +726,8 @@ export interface components {
             user?: components["schemas"]["User"];
             profiles?: components["schemas"]["Profile"][];
             activeProfileId?: number | null;
+            /** @description Returned by login and first-run setup only. Native (desktop/ mobile) clients persist it and send it as `Authorization: Bearer <token>`, since their cross-site session cookie can't be stored without HTTPS. Browsers ignore it and keep using the cookie. */
+            sessionToken?: string;
         };
         SetupAdminRequest: {
             username: string;
